@@ -192,6 +192,10 @@ isReservedIRQ(irq_t irq)
 void
 handleReservedIRQ(irq_t irq)
 {
+    if (irq == INTERRUPT_UART2) {
+        handle_reset_on_serial();
+        return;
+    }
     printf("Received reserved IRQ: %d\n", (int)irq);
 }
 
@@ -199,6 +203,30 @@ handleReservedIRQ(irq_t irq)
 BOOT_CODE void
 map_kernel_devices(void)
 {
+    /* map kernel device: reset controler */
+    map_kernel_frame(
+        SRC_PADDR,
+        SRC_PPTR,
+        VMKernelOnly,
+        vm_attributes_new(
+            true,  /* armExecuteNever  */
+            false, /* armParityEnabled */
+            false  /* armPageCacheable */
+        )
+    );
+
+    /* map kernel device: watch controler */
+    map_kernel_frame(
+        WDOG1_PADDR,
+        WATCHDOG_PPTR,
+        VMKernelOnly,
+        vm_attributes_new(
+            true,  /* armExecuteNever  */
+            false, /* armParityEnabled */
+            false  /* armPageCacheable */
+        )
+    );
+
     /* map kernel device: GIC controller and private timers */
     map_kernel_frame(
         ARM_MP_PADDR,

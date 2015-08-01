@@ -19,6 +19,8 @@
 #define L2CC_PL310_PPTR             0xfff03000
 #define ARM_MP_PPTR1                0xfff04000
 #define ARM_MP_PPTR2                0xfff05000
+#define SRC_PPTR                    0xfff06000
+#define WATCHDOG_PPTR               0xfff07000
 
 #define L2CC_L2C310_PPTR            (L2CC_PL310_PPTR      )
 #define ARM_MP_PRIV_TIMER_PPTR      (ARM_MP_PPTR1 + 0x600 )
