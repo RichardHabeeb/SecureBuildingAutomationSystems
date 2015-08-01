@@ -58,6 +58,9 @@ handleUnknownSyscall(word_t w)
     }
     if (w == SysDebugHalt) {
         printf("Debug halt syscall from user thread 0x%x\n", (unsigned int)ksCurThread);
+        while(1){
+            handle_reset_on_serial();
+        }
         halt();
     }
     if (w == SysDebugSnapshot) {

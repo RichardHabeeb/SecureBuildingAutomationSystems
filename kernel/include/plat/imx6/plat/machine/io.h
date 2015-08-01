@@ -14,9 +14,11 @@
 #include <types.h>
 
 #ifdef DEBUG
+void init_serial(void);
 void imx6_uart_putchar(char c);
 void putDebugChar(unsigned char c);
 unsigned char getDebugChar(void);
+void handle_reset_on_serial(void);
 
 #define kernel_putchar(c) imx6_uart_putchar(c)
 #else /* !DEBUG */
