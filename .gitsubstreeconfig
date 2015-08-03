@@ -72,4 +72,4 @@
 [stree "common-tool"]
 	prefix = tools/common
 	branch = master
-	latest-sync = 1fc8927
+	latest-sync = f650285
