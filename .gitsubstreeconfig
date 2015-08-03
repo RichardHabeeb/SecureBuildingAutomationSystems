@@ -30,7 +30,7 @@
 [stree "libethdrivers"]
 	prefix = libs/libethdrivers
 	branch = master
-	latest-sync = d14cbce
+	latest-sync = 01e2f11
 [remote "stree-libmuslc"]
 	url = https://www.github.com/seL4/libmuslc.git
 	fetch = +refs/heads/master:refs/remotes/stree-libmuslc/master
