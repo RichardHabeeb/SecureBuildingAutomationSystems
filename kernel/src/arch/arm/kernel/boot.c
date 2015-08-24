@@ -131,7 +131,6 @@ init_irqs(cap_t root_cnode_cap)
         setIRQState(IRQInactive, i);
     }
     setIRQState(IRQTimer, KERNEL_TIMER_IRQ);
-    setIRQState(IRQReserved, 59);
 
     /* provide the IRQ control cap */
     write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), BI_CAP_IRQ_CTRL), cap_irq_control_cap_new());
@@ -334,8 +333,6 @@ try_init_kernel(
 
     /* initialise the CPU */
     init_cpu();
-
-    init_serial();
 
     /* debug output via serial port is only available from here */
     printf("Bootstrapping kernel\n");

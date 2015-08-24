@@ -17,7 +17,6 @@
 #include <kernel/thread.h>
 #include <kernel/cdt.h>
 #include <machine/io.h>
-#include <model/preemption.h>
 #include <model/statedata.h>
 #include <object/cnode.h>
 #include <object/untyped.h>
@@ -1649,11 +1648,17 @@ exception_t
 performPageInvocationMapPTE(cap_t cap, cte_t *ctSlot, pte_t pte,
                             pte_range_t pte_entries)
 {
-    unsigned int i;
+    unsigned int i, j UNUSED;
 
     cap = cap_frame_cap_set_capFMappedObject(cap, PT_REF(pte_entries.pt));
     cap = cap_frame_cap_set_capFMappedIndex(cap, pte_entries.start);
     cdtUpdate(ctSlot, cap);
+
+    j = pte_entries.length;
+    /** GHOSTUPD: "(\<acute>j <= 16, id)" */
+
+    j = pte_entries.length;
+    /** GHOSTUPD: "(\<acute>j <= 16, id)" */
 
     for (i = 0; i < pte_entries.length; i++) {
         pte_entries.pt[pte_entries.start + i] = pte;
@@ -1718,6 +1723,10 @@ performPageInvocationUnmap(cap_t cap, cte_t *ctSlot)
 void
 doFlush(int label, vptr_t start, vptr_t end, paddr_t pstart)
 {
+    /** GHOSTUPD: "((gs_get_assn cap_get_capSizeBits_'proc \<acute>ghost'state = 0
+            \<or> \<acute>end - \<acute>start <= gs_get_assn cap_get_capSizeBits_'proc \<acute>ghost'state)
+        \<and> \<acute>start <= \<acute>end, id)" */
+
     switch (label) {
     case ARMPDClean_Data:
     case ARMPageClean_Data:
