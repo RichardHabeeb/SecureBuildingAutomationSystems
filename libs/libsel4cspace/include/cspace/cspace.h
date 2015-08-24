@@ -36,6 +36,7 @@
 
 #ifndef CSPACE_CSPACE_H
 #define CSPACE_CSPACE_H
+#include <stdint.h>
 #include <sel4/types.h>
 #include <stdlib.h>
 
