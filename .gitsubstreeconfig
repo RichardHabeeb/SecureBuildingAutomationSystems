@@ -9,7 +9,7 @@
 [stree "kernel"]
 	prefix = kernel
 	branch = experimental
-	latest-sync = 27cdce4
+	latest-sync = 153b22a
 [remote "stree-libcpio"]
 	url = https://www.github.com/seL4/libcpio.git
 	fetch = +refs/heads/master:refs/remotes/stree-libcpio/master
