@@ -27,6 +27,8 @@
 #include "vmem_layout.h"
 #include "mapping.h"
 
+#include "udp_syscall.h"
+
 #include <autoconf.h>
 
 #define verbose 5
@@ -35,7 +37,8 @@
 
 /* This is the index where a clients syscall enpoint will
  * be stored in the clients cspace. */
-#define USER_EP_CAP          (1)
+#define USER_EP_CAP          (2)
+
 /* To differencient between async and and sync IPC, we assign a
  * badge to the async endpoint. The badge that we receive will
  * be the bitwise 'OR' of the async endpoint badge and the badges
@@ -71,11 +74,47 @@ struct {
 
 } tty_test_process;
 
+typedef struct _process_t {
+
+    seL4_Word tcb_addr;
+    seL4_TCB tcb_cap;
+
+    seL4_Word vroot_addr;
+    seL4_ARM_PageDirectory vroot;
+
+    seL4_Word ipc_buffer_addr;
+    seL4_CPtr ipc_buffer_cap;
+
+    seL4_CPtr ut_pool;
+    seL4_Word ut_pool_addr;
+
+    cspace_t *croot;
+
+} process_t;
+
+
+
+typedef struct _proxy_client_config_t {
+    seL4_CPtr local_cap;
+    seL4_Word badge;
+    seL4_Word udp_port;
+    uint8_t psk[64+1]; /* Put key as a hex string here. (256-bit)+\n */
+    uint8_t iv[32+1]; /* Put IV as a hex string here. */
+} proxy_client_config_t;
+
+typedef struct _proxy_config_t {
+    seL4_Word enable_encryption;
+    seL4_Word forward_ip_and_port;
+    proxy_client_config_t clients[CONFIG_APP_PROXY_MAX_NUM_CLIENTS];
+    seL4_Word num_clients;
+} proxy_config_t;
 
 /*
  * A dummy starting syscall
  */
 #define SOS_SYSCALL0 0
+#define SOS_SYSCALL1 1
+#define SOS_SYSCALL2 2
 
 seL4_CPtr _sos_ipc_ep_cap;
 seL4_CPtr _sos_interrupt_ep_cap;
@@ -89,7 +128,11 @@ extern fhandle_t mnt_point;
 void handle_syscall(seL4_Word badge, int num_args) {
     seL4_Word syscall_number;
     seL4_CPtr reply_cap;
-
+    seL4_MessageInfo_t reply;
+    struct ip_addr ipaddr;
+    int port;
+    int len;
+    char *buf;
 
     syscall_number = seL4_GetMR(0);
 
@@ -100,22 +143,52 @@ void handle_syscall(seL4_Word badge, int num_args) {
     /* Process system call */
     switch (syscall_number) {
     case SOS_SYSCALL0:
-        dprintf(0, "syscall: thread made syscall 0!\n");
+        //dprintf(0, "syscall: thread made syscall 0!\n");
 
-        seL4_MessageInfo_t reply = seL4_MessageInfo_new(0, 0, 0, 1);
+        reply = seL4_MessageInfo_new(0, 0, 0, 1);
         seL4_SetMR(0, 0);
         seL4_Send(reply_cap, reply);
+
+        cspace_free_slot(cur_cspace, reply_cap);
+
+        break;
+    case SOS_SYSCALL1:
+        //dprintf(0, "syscall: thread made syscall 1!\n");
+
+        ipaddr.addr = seL4_GetMR(1);
+        port = seL4_GetMR(2);
+        buf = seL4_GetIPCBuffer()->msg + 3;
+	len = num_args - 2; /* Subtract off port and ip MRs. */
+
+
+        udp_send_syscall(ipaddr, port, buf, len);
+        reply = seL4_MessageInfo_new(0, 0, 0, 1);
+        seL4_SetMR(0, 0);
+        seL4_Send(reply_cap, reply);
+
+        cspace_free_slot(cur_cspace, reply_cap);
+
+        break;
+
+    case SOS_SYSCALL2:
+        //dprintf(0, "syscall: thread made syscall 2!\n");
+
+        port = seL4_GetMR(1);
+
+        udp_recv_syscall(port, reply_cap);
+        //Don't send reply. Wait for incoming network data.
 
         break;
 
     default:
         printf("Unknown syscall %d\n", syscall_number);
         /* we don't want to reply to an unknown syscall */
+        cspace_free_slot(cur_cspace, reply_cap);
+        break;
 
     }
 
-    /* Free the saved reply cap */
-    cspace_free_slot(cur_cspace, reply_cap);
+
 }
 
 void syscall_loop(seL4_CPtr ep) {
@@ -145,7 +218,7 @@ void syscall_loop(seL4_CPtr ep) {
             handle_syscall(badge, seL4_MessageInfo_get_length(message) - 1);
 
         }else{
-            printf("Rootserver got an unknown message\n");
+            printf("Rootserver got an unknown message. Label: %i\n", label);
         }
     }
 }
@@ -165,11 +238,11 @@ static void print_bootinfo(const seL4_BootInfo* info) {
     dprintf(1,"\nCap details:\n");
     dprintf(1,"Type              Start      End\n");
     dprintf(1,"Empty             0x%08x 0x%08x\n", info->empty.start, info->empty.end);
-    dprintf(1,"Shared frames     0x%08x 0x%08x\n", info->sharedFrames.start, 
+    dprintf(1,"Shared frames     0x%08x 0x%08x\n", info->sharedFrames.start,
                                                    info->sharedFrames.end);
-    dprintf(1,"User image frames 0x%08x 0x%08x\n", info->userImageFrames.start, 
+    dprintf(1,"User image frames 0x%08x 0x%08x\n", info->userImageFrames.start,
                                                    info->userImageFrames.end);
-    dprintf(1,"User image PTs    0x%08x 0x%08x\n", info->userImagePTs.start, 
+    dprintf(1,"User image PTs    0x%08x 0x%08x\n", info->userImagePTs.start,
                                                    info->userImagePTs.end);
     dprintf(1,"Untypeds          0x%08x 0x%08x\n", info->untyped.start, info->untyped.end);
 
@@ -213,7 +286,67 @@ static void print_bootinfo(const seL4_BootInfo* info) {
     dprintf(1,"--------------------------------------------------------\n");
 }
 
-void start_first_process(char* app_name, seL4_CPtr fault_ep) {
+seL4_CPtr create_worker_thread(process_t *proc, seL4_CPtr user_syscall_cap, seL4_Word ipc_buffer_vaddr) {
+    int err;
+    seL4_CPtr tcb_cap;
+    seL4_CPtr ipc_buffer_cap;
+
+    /* Allocate IPC buffer */
+    seL4_Word ipc_buffer_addr = ut_alloc(seL4_PageBits);
+    conditional_panic(!proc->ipc_buffer_addr, "No memory for ipc buffer");
+
+    /* Retype IPC buffer */
+    err =  cspace_ut_retype_addr(ipc_buffer_addr,
+                                 seL4_ARM_SmallPageObject,
+                                 seL4_PageBits,
+                                 cur_cspace,
+                                 &ipc_buffer_cap);
+    conditional_panic(err, "Unable to allocate page for IPC buffer");
+
+    /* Allocate TCB */
+    seL4_Word tcb_addr = ut_alloc(seL4_TCBBits);
+    conditional_panic(!tcb_addr, "No memory for new worker TCB");
+
+    /* Retype TCB */
+    err =  cspace_ut_retype_addr(tcb_addr,
+                                 seL4_TCBObject,
+                                 seL4_TCBBits,
+                                 cur_cspace,
+                                 &tcb_cap);
+    conditional_panic(err, "Failed to create TCB");
+
+    /* Configure */
+    err = seL4_TCB_Configure(tcb_cap,
+                             user_syscall_cap, 
+                             TTY_PRIORITY,
+                             proc->croot->root_cnode,
+                             seL4_NilData,
+                             proc->vroot,
+                             seL4_NilData,
+                             ipc_buffer_vaddr,
+                             ipc_buffer_cap);
+    conditional_panic(err, "Unable to configure new TCB");
+
+    /* Copy the worker tcb cap to the user app */
+    seL4_CPtr user_tcb_cap;
+    user_tcb_cap = cspace_mint_cap(proc->croot,
+                                   cur_cspace,
+                                   tcb_cap,
+                                   seL4_AllRights,
+                                   seL4_CapData_Badge_new(0));
+
+    /* Map in the IPC buffer for the thread */
+    err = map_page(ipc_buffer_cap,
+                   proc->vroot,
+                   ipc_buffer_vaddr,
+                   seL4_AllRights,
+                   seL4_ARM_Default_VMAttributes);
+    conditional_panic(err, "Unable to map IPC buffer for user app");
+
+    return tcb_cap;
+}
+
+void start_process(char* app_name, seL4_CPtr syscall_ep, process_t *proc, uint32_t num_extra_threads) {
     int err;
 
     seL4_Word stack_addr;
@@ -228,56 +361,65 @@ void start_first_process(char* app_name, seL4_CPtr fault_ep) {
     unsigned long elf_size;
 
     /* Create a VSpace */
-    tty_test_process.vroot_addr = ut_alloc(seL4_PageDirBits);
-    conditional_panic(!tty_test_process.vroot_addr, 
+    proc->vroot_addr = ut_alloc(seL4_PageDirBits);
+    conditional_panic(!proc->vroot_addr,
                       "No memory for new Page Directory");
-    err = cspace_ut_retype_addr(tty_test_process.vroot_addr,
+    err = cspace_ut_retype_addr(proc->vroot_addr,
                                 seL4_ARM_PageDirectoryObject,
                                 seL4_PageDirBits,
                                 cur_cspace,
-                                &tty_test_process.vroot);
+                                &proc->vroot);
     conditional_panic(err, "Failed to allocate page directory cap for client");
 
     /* Create a simple 1 level CSpace */
-    tty_test_process.croot = cspace_create(1);
-    assert(tty_test_process.croot != NULL);
+    proc->croot = cspace_create(1);
+    assert(proc->croot != NULL);
+
+    /* Give process its CSpace cap */
+    cspace_mint_cap(proc->croot,
+                    cur_cspace,
+                    proc->croot->root_cnode,
+                    seL4_AllRights,
+                    seL4_CapData_Badge_new(0));
+
 
     /* Create an IPC buffer */
-    tty_test_process.ipc_buffer_addr = ut_alloc(seL4_PageBits);
-    conditional_panic(!tty_test_process.ipc_buffer_addr, "No memory for ipc buffer");
-    err =  cspace_ut_retype_addr(tty_test_process.ipc_buffer_addr,
+    proc->ipc_buffer_addr = ut_alloc(seL4_PageBits);
+    conditional_panic(!proc->ipc_buffer_addr, "No memory for ipc buffer");
+    err =  cspace_ut_retype_addr(proc->ipc_buffer_addr,
                                  seL4_ARM_SmallPageObject,
                                  seL4_PageBits,
                                  cur_cspace,
-                                 &tty_test_process.ipc_buffer_cap);
+                                 &proc->ipc_buffer_cap);
     conditional_panic(err, "Unable to allocate page for IPC buffer");
 
-    /* Copy the fault endpoint to the user app to enable IPC */
-    user_ep_cap = cspace_mint_cap(tty_test_process.croot,
+    
+    /* Give process its system call ep cap */
+    user_ep_cap = cspace_mint_cap(proc->croot,
                                   cur_cspace,
-                                  fault_ep,
-                                  seL4_AllRights, 
+                                  syscall_ep,
+                                  seL4_AllRights, //TODO RTH: FIX
                                   seL4_CapData_Badge_new(TTY_EP_BADGE));
-    /* should be the first slot in the space, hack I know */
-    assert(user_ep_cap == 1);
-    assert(user_ep_cap == USER_EP_CAP);
+    
+
 
     /* Create a new TCB object */
-    tty_test_process.tcb_addr = ut_alloc(seL4_TCBBits);
-    conditional_panic(!tty_test_process.tcb_addr, "No memory for new TCB");
-    err =  cspace_ut_retype_addr(tty_test_process.tcb_addr,
+    proc->tcb_addr = ut_alloc(seL4_TCBBits);
+    conditional_panic(!proc->tcb_addr, "No memory for new TCB");
+    err =  cspace_ut_retype_addr(proc->tcb_addr,
                                  seL4_TCBObject,
                                  seL4_TCBBits,
                                  cur_cspace,
-                                 &tty_test_process.tcb_cap);
+                                 &proc->tcb_cap);
     conditional_panic(err, "Failed to create TCB");
 
     /* Configure the TCB */
-    err = seL4_TCB_Configure(tty_test_process.tcb_cap, user_ep_cap, TTY_PRIORITY,
-                             tty_test_process.croot->root_cnode, seL4_NilData,
-                             tty_test_process.vroot, seL4_NilData, PROCESS_IPC_BUFFER,
-                             tty_test_process.ipc_buffer_cap);
+    err = seL4_TCB_Configure(proc->tcb_cap, user_ep_cap, TTY_PRIORITY,
+                             proc->croot->root_cnode, seL4_NilData,
+                             proc->vroot, seL4_NilData, PROCESS_IPC_BUFFER,
+                             proc->ipc_buffer_cap);
     conditional_panic(err, "Unable to configure new TCB");
+
 
 
     /* parse the cpio image */
@@ -286,7 +428,7 @@ void start_first_process(char* app_name, seL4_CPtr fault_ep) {
     conditional_panic(!elf_base, "Unable to locate cpio header");
 
     /* load the elf image */
-    err = elf_load(tty_test_process.vroot, elf_base);
+    err = elf_load(proc->vroot, elf_base);
     conditional_panic(err, "Failed to load elf image");
 
 
@@ -301,23 +443,33 @@ void start_first_process(char* app_name, seL4_CPtr fault_ep) {
     conditional_panic(err, "Unable to allocate page for stack");
 
     /* Map in the stack frame for the user app */
-    err = map_page(stack_cap, tty_test_process.vroot,
+    err = map_page(stack_cap, proc->vroot,
                    PROCESS_STACK_TOP - (1 << seL4_PageBits),
                    seL4_AllRights, seL4_ARM_Default_VMAttributes);
     conditional_panic(err, "Unable to map stack IPC buffer for user app");
 
     /* Map in the IPC buffer for the thread */
-    err = map_page(tty_test_process.ipc_buffer_cap, tty_test_process.vroot,
+    err = map_page(proc->ipc_buffer_cap, proc->vroot,
                    PROCESS_IPC_BUFFER,
                    seL4_AllRights, seL4_ARM_Default_VMAttributes);
     conditional_panic(err, "Unable to map IPC buffer for user app");
+
+
+    for(uint32_t i = 1; i <= num_extra_threads; i++) {
+        create_worker_thread(proc, syscall_ep, PROCESS_IPC_BUFFER + i * (1 << seL4_PageBits));
+    }
 
     /* Start the new process */
     memset(&context, 0, sizeof(context));
     context.pc = elf_getEntryPoint(elf_base);
     context.sp = PROCESS_STACK_TOP;
-    seL4_TCB_WriteRegisters(tty_test_process.tcb_cap, 1, 0, 2, &context);
+    seL4_TCB_WriteRegisters(proc->tcb_cap, 1, 0, 2, &context);
 }
+
+
+
+
+
 
 static void _sos_ipc_init(seL4_CPtr* ipc_ep, seL4_CPtr* async_ep){
     seL4_Word ep_addr, aep_addr;
@@ -341,7 +493,7 @@ static void _sos_ipc_init(seL4_CPtr* ipc_ep, seL4_CPtr* async_ep){
     /* Create an endpoint for user application IPC */
     ep_addr = ut_alloc(seL4_EndpointBits);
     conditional_panic(!ep_addr, "No memory for endpoint");
-    err = cspace_ut_retype_addr(ep_addr, 
+    err = cspace_ut_retype_addr(ep_addr,
                                 seL4_EndpointObject,
                                 seL4_EndpointBits,
                                 cur_cspace,
@@ -395,6 +547,84 @@ static inline seL4_CPtr badge_irq_ep(seL4_CPtr ep, seL4_Word badge) {
     return badged_cap;
 }
 
+seL4_CPtr connect_processes(process_t *client, seL4_Word client_perms, seL4_Word client_badge, process_t *server, seL4_Word server_perms, seL4_Word server_badge) {
+    int err;
+    seL4_CPtr ep_cap;
+    seL4_Word ep_addr = ut_alloc(seL4_EndpointBits); 
+    conditional_panic(!ep_addr, "No memory for endpoint");
+
+    err = cspace_ut_retype_addr(ep_addr,
+                          seL4_EndpointObject,
+                          seL4_EndpointBits,
+                          cur_cspace,
+                          &ep_cap);
+    conditional_panic(err, "Failed to allocate c-slot for endpoint.");
+
+    cspace_mint_cap(client->croot,
+                    cur_cspace,
+                    ep_cap,
+                    client_perms,
+                    seL4_CapData_Badge_new(client_badge));
+
+    cspace_mint_cap(server->croot,
+                    cur_cspace,
+                    ep_cap,
+                    server_perms,
+                    seL4_CapData_Badge_new(server_badge));
+    return ep_cap;
+}
+
+
+seL4_CPtr allocate_and_map_page(process_t *process, seL4_Word v_dest, seL4_Word permissions) {
+    int err;
+    seL4_CPtr mem_cap;
+    seL4_Word mem_addr;
+    mem_addr = ut_alloc(seL4_PageBits);
+    
+    err = cspace_ut_retype_addr(mem_addr,
+                                seL4_ARM_SmallPageObject,
+                                seL4_PageBits,
+                                cur_cspace,
+                                &mem_cap);
+    conditional_panic(err, "Unable to retype page.");
+
+    err = map_page(mem_cap,
+                   process->vroot,
+                   v_dest,
+                   permissions,
+                   seL4_ARM_Default_VMAttributes);
+    conditional_panic(err, "Unable to map page");
+    return mem_cap;
+}
+
+
+void initialize_process_config(process_t *process, seL4_Word v_dest, uint8_t *buffer, seL4_Word buffer_len) {
+    static uint8_t *local_v_dest = (uint8_t *)0x70000000; //TODO
+    int err;
+    seL4_CPtr page_cap[2];
+
+    conditional_panic(buffer_len > (1 << seL4_PageBits), "Config buffer too large");
+
+    page_cap[0] = allocate_and_map_page(process, v_dest, seL4_AllRights);
+    page_cap[1] = cspace_copy_cap(cur_cspace,
+                                  cur_cspace,
+                                  page_cap[0],
+                                  seL4_AllRights);
+    conditional_panic(!page_cap[1], "Unable to duplicate page cap");
+
+    err = map_page(page_cap[1],
+                   seL4_CapInitThreadVSpace,
+                   (seL4_Word)local_v_dest,
+                   seL4_AllRights,
+                   seL4_ARM_Default_VMAttributes);
+    conditional_panic(err, "Unable to duplicate page mapping in root task");
+
+    memcpy(local_v_dest, buffer, buffer_len);
+    local_v_dest += (1 << seL4_PageBits);
+
+}
+
+
 /*
  * Main entry point - called by crt.
  */
@@ -405,17 +635,167 @@ int main(void) {
     _sos_init(&_sos_ipc_ep_cap, &_sos_interrupt_ep_cap);
 
     /* Initialise the network hardware */
-    network_init(badge_irq_ep(_sos_interrupt_ep_cap, IRQ_BADGE_NETWORK));
+    //network_init(badge_irq_ep(_sos_interrupt_ep_cap, IRQ_BADGE_NETWORK));
+
+
+#if defined(CONFIG_APP_LPING) && defined(CONFIG_APP_LPONG)
+    /* DO LOCAL BANDWIDTH TESTING*/
+    process_t ping;
+    process_t pong;
+    start_process("lping", _sos_ipc_ep_cap, &ping);
+    start_process("lpong", _sos_ipc_ep_cap, &pong);
+
+    seL4_CPtr shared_ep[2];
+    seL4_Word ep_addr[2];
+    ep_addr[0] = ut_alloc(seL4_EndpointBits);
+    ep_addr[1] = ut_alloc(seL4_EndpointBits);
+    conditional_panic(!ep_addr[0], "No memory for endpoint");
+    conditional_panic(!ep_addr[1], "No memory for endpoint");
+
+    cspace_ut_retype_addr(ep_addr[0],
+                          seL4_EndpointObject,
+                          seL4_EndpointBits,
+                          cur_cspace,
+                          &shared_ep[0]);
+    cspace_ut_retype_addr(ep_addr[1],
+                          seL4_EndpointObject,
+                          seL4_EndpointBits,
+                          cur_cspace,
+                          &shared_ep[1]);
+ 
+    cspace_mint_cap(ping.croot,
+                    cur_cspace,
+                    shared_ep[0],
+                    seL4_AllRights, //TODO RTH: FIX
+                    seL4_CapData_Badge_new(0));
+    cspace_mint_cap(ping.croot,
+                    cur_cspace,
+                    shared_ep[1],
+                    seL4_AllRights, //TODO RTH: FIX
+                    seL4_CapData_Badge_new(1));
+
+    cspace_mint_cap(pong.croot,
+                    cur_cspace,
+                    shared_ep[0],
+                    seL4_AllRights, //TODO RTH: FIX
+                    seL4_CapData_Badge_new(0));
+    cspace_mint_cap(pong.croot,
+                    cur_cspace,
+                    shared_ep[1],
+                    seL4_AllRights, //TODO RTH: FIX
+                    seL4_CapData_Badge_new(1));
+
+
+#elif defined(CONFIG_APP_PING) && defined(CONFIG_APP_PONG)
+
+    /* DO REMOTE BANDWIDTH TESTING */
 
     /* Start the user application */
-    start_first_process(TTY_NAME, _sos_ipc_ep_cap);
+    process_t proxy;
+    start_process("proxy1", _sos_ipc_ep_cap, &proxy);
+
+    process_t p;
+    start_process(CONFIG_SOS_STARTUP_APP, _sos_ipc_ep_cap, &p);
+
+    /* Setup proxy to startup app EP */
+    seL4_CPtr proxy_ep[2];
+    seL4_Word ep_addr[2];
+
+    ep_addr[0] = ut_alloc(seL4_EndpointBits); 
+    ep_addr[1] = ut_alloc(seL4_EndpointBits);
+    conditional_panic(!ep_addr[0], "No memory for endpoint");
+    conditional_panic(!ep_addr[1], "No memory for endpoint");
+
+    cspace_ut_retype_addr(ep_addr[0],
+                          seL4_EndpointObject,
+                          seL4_EndpointBits,
+                          cur_cspace,
+                          &proxy_ep[0]);
+    cspace_ut_retype_addr(ep_addr[1],
+                          seL4_EndpointObject,
+                          seL4_EndpointBits,
+                          cur_cspace,
+                          &proxy_ep[1]);
+
+    cspace_mint_cap(p.croot,
+                    cur_cspace,
+                    proxy_ep[0],
+                    seL4_AllRights, //TODO RTH: FIX
+                    seL4_CapData_Badge_new(0));
+    cspace_mint_cap(p.croot,
+                    cur_cspace,
+                    proxy_ep[1],
+                    seL4_AllRights, //TODO RTH: FIX
+                    seL4_CapData_Badge_new(1));
+
+    cspace_mint_cap(proxy.croot,
+                    cur_cspace,
+                    proxy_ep[0],
+                    seL4_AllRights, //TODO RTH: FIX
+                    seL4_CapData_Badge_new(0));
+    cspace_mint_cap(proxy.croot,
+                    cur_cspace,
+                    proxy_ep[1],
+                    seL4_AllRights, //TODO RTH: FIX
+                    seL4_CapData_Badge_new(1));
+
+
+#endif
+
+
+    //TODO don't put all these on the stack
+    process_t web;
+    process_t web_proxy;
+    process_t temp_control;
+    process_t sensor;
+    process_t fan;
+    process_t alarm;
+
+    //proxy_config_t web_config;
+    proxy_config_t web_proxy_config;
+    proxy_config_t temp_control_config;
+    proxy_config_t sensor_config;
+    proxy_config_t fan_config;
+    //proxy_config_t alarm_config;
+
+
+
+#if defined(CONFIG_APP_WEB) && \
+    defined(CONFIG_APP_TEMP_CONTROL) && \
+    defined(CONFIG_APP_PROXY_SENSOR) && \
+    defined(CONFIG_APP_PROXY_FAN)
+
+    
+    //TODO fix cap counting
+    //start_process("alarm", seL4_CapNull, &alarm, 0); // 1 local cap
+    start_process("web", _sos_ipc_ep_cap, &web, 0); // 2 local caps
+    start_process("temp_control", _sos_ipc_ep_cap, &temp_control, 1); 
+    start_process("proxy", _sos_ipc_ep_cap, &web_proxy, 2);
+
+    connect_processes(&temp_control, seL4_AllRights, 0, &web, seL4_AllRights, 0); //TODO trim rights
+    connect_processes(&web, seL4_AllRights, 0, &web_proxy, seL4_AllRights, 0);
+
+    //TODO migrate some of this to Kconfig
+    web_proxy_config.enable_encryption = 0;
+    web_proxy_config.forward_ip_and_port = 1;
+    web_proxy_config.num_clients = 1;
+    web_proxy_config.clients[0].local_cap = 3;
+    web_proxy_config.clients[0].badge = 0;
+    web_proxy_config.clients[0].udp_port = 4444;
+    initialize_process_config(&web_proxy, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&web_proxy_config), sizeof(web_proxy_config));
+
+
+#endif
+
+
+
+
+
 
     /* Wait on synchronous endpoint for IPC */
     dprintf(0, "\nSOS entering syscall loop\n");
     syscall_loop(_sos_ipc_ep_cap);
 
     /* Not reached */
-    return 0;
+
 }
-
-

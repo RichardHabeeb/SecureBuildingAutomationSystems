@@ -39,6 +39,14 @@ menu "seL4 Applications"
     source "apps/sos/Kconfig"
     source "apps/sosh/Kconfig"
     source "apps/tty_test/Kconfig"
+    source "apps/proxy1/Kconfig"
+    source "apps/ping/Kconfig"
+    source "apps/pong/Kconfig"
+    source "apps/lping/Kconfig"
+    source "apps/lpong/Kconfig"
+    source "apps/proxy/Kconfig"
+    source "apps/web/Kconfig"
+    source "apps/temp_control/Kconfig"
 endmenu
 
 menu "Tools"
@@ -46,4 +54,3 @@ menu "Tools"
 endmenu
 
 source "$COMMON_PATH/Kconfig"
-

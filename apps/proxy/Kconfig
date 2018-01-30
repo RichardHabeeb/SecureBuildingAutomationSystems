@@ -1,0 +1,29 @@
+menuconfig APP_PROXY
+    bool "Updated Proxy Applications"
+    depends on LIB_SEL4 && HAVE_LIBC && LIB_SOS
+    default y
+    select HAVE_SEL4_APPS
+    help
+        Network proxy.
+
+config APP_PROXY_MAX_NUM_CLIENTS
+    int "Maximum number of clients a proxy can serve"
+    default 16
+    help
+        Affects how much static memory and worker threads are preallocated.
+
+config APP_PROXY_TEMP_CONTROL
+    bool "PROXY: Temperature Controller"
+    depends on APP_PROXY
+    default n
+
+config APP_PROXY_SENSOR
+    bool "PROXY Sensor"
+    depends on APP_PROXY
+    default n
+
+config APP_PROXY_FAN
+    bool "PROXY: Fan"
+    depends on APP_PROXY
+    default n
+

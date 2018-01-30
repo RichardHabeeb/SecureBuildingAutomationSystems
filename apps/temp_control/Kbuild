@@ -1,0 +1,3 @@
+components-$(CONFIG_APP_TEMP_CONTROL) += temp_control
+
+temp_control: $(libc) libsel4 libsos

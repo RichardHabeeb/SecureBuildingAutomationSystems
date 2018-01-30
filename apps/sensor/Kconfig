@@ -1,0 +1,8 @@
+
+config APP_SENSOR
+    bool "sensor"
+    depends on LIB_SEL4 && HAVE_LIBC && LIB_SOS
+    default y
+    select HAVE_SEL4_APPS
+    help
+        A demo app

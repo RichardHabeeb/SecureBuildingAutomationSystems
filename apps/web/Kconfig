@@ -1,0 +1,8 @@
+
+config APP_WEB
+    bool "web"
+    depends on LIB_SEL4 && HAVE_LIBC && LIB_SOS
+    default y
+    select HAVE_SEL4_APPS
+    help
+        Building Management Interface Application

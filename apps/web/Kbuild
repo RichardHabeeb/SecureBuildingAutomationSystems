@@ -1,0 +1,4 @@
+
+components-$(CONFIG_APP_WEB) += web
+
+web: $(libc) libsel4 libsos

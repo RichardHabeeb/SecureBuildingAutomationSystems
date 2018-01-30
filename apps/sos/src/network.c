@@ -41,6 +41,8 @@
 #include <sys/debug.h>
 #include <sys/panic.h>
 
+#include "udp_syscall.h"
+
 
 #ifndef SOS_NFS_DIR
 #  ifdef CONFIG_SOS_NFS_DIR
@@ -80,7 +82,7 @@ static void
 sos_unmap_device(void *cookie, void *addr, size_t size) {
 }
 
-void 
+void
 sos_usleep(int usecs) {
     /* We need to spin because we do not as yet have a timer interrupt */
     while(usecs-- > 0){
@@ -97,7 +99,7 @@ sos_usleep(int usecs) {
 /*******************
  *** IRQ handler ***
  *******************/
-void 
+void
 network_irq(void) {
     int err;
     int i;
@@ -148,7 +150,7 @@ network_prime_arp(struct ip_addr *gw){
     }
 }
 
-void 
+void
 network_init(seL4_CPtr interrupt_ep) {
     struct ip_addr netmask, ipaddr, gw;
     int err;
@@ -206,12 +208,13 @@ network_init(seL4_CPtr interrupt_ep) {
     netif_set_default(lwip_iface->netif);
 
     /*
-     * LWIP does not queue packets while waiting for an ARP response 
+     * LWIP does not queue packets while waiting for an ARP response
      * Generally this is okay as we block waiting for a response to our
      * request before sending another. On the other hand, priming the
-     * table is cheap and can save a lot of heart ache 
+     * table is cheap and can save a lot of heart ache
      */
-    network_prime_arp(&gw);
+    //network_prime_arp(&gw); //RTH
+    udp_syscall_init();
 
     /* initialise and mount NFS */
     if(strlen(SOS_NFS_DIR)) {
