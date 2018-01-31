@@ -86,7 +86,7 @@ static void send_packet(seL4_Word ip, seL4_Word port, char * data, uint32_t len)
 }
 
 
-static uint32_t recv_packet(seL4_Word port, char * data, uint32_t max_len) {
+static uint32_t recv_packet(seL4_Word port, char * data, uint32_t max_len, seL4_Word *ip) {
     uint32_t len;
     seL4_MessageInfo_t tag;
 
@@ -98,7 +98,9 @@ static uint32_t recv_packet(seL4_Word port, char * data, uint32_t max_len) {
     tag = seL4_Call(SYSCALL_EP_SLOT, tag);
     len = MIN(max_len, seL4_MessageInfo_get_length(tag));
 
-    memcpy(data, seL4_GetIPCBuffer()->msg, len);
+    ip = seL4_GetMR(0);
+    //port = seL4_GetMR(1);
+    memcpy(data, seL4_GetIPCBuffer()->msg + 2, len);
     
     return len;
 }
@@ -110,6 +112,7 @@ void worker_thread(void) {
     uint32_t id;
     seL4_Word port;
     seL4_Word ip_address;
+    seL4_Word remote_ip_address; //UNUSED
     seL4_MessageInfo_t tag;
     seL4_Word badge;
 
@@ -141,7 +144,7 @@ void worker_thread(void) {
                 /* extract port to listen on, TODO:  */
                 port = seL4_GetMR(1);
         
-                len = recv_packet(port, recieved_data, sizeof(recieved_data));
+                len = recv_packet(port, recieved_data, sizeof(recieved_data), &remote_ip_address);
         
                 if(config->enable_encryption) {
                     len = blockDecrypt(&cipher_d, &key_d, recieved_data, len*8, seL4_GetIPCBuffer()->msg)/8;

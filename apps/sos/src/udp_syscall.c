@@ -184,8 +184,11 @@ static void my_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, struct ip_a
 
     if(reply_cap != seL4_CapNull)
     {
-        reply = seL4_MessageInfo_new(0, 0, 0, p->tot_len);
-        pbuf_copy_partial(p, seL4_GetIPCBuffer()->msg, p->tot_len, 0);
+        reply = seL4_MessageInfo_new(0, 0, 0, (p->tot_len / sizeof(seL4_Word)) + ((p->tot_len % sizeof(seL4_Word) == 0) ? 2 : 3));
+
+        seL4_SetMR(0, addr->addr);
+        seL4_SetMR(1, port);
+        pbuf_copy_partial(p, (seL4_GetIPCBuffer()->msg + 2), p->tot_len, 0);
         seL4_Send(reply_cap, reply);
         cspace_free_slot(cur_cspace, reply_cap);
     }
