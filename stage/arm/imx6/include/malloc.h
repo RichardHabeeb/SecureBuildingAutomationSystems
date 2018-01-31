@@ -1,2 +1,0 @@
-/* @LICENSE(MUSLC_MIT) */
-
