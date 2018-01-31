@@ -6367,6 +6367,7 @@ void __conditional_panic(int condition, const char *message, const char *file,
 
 
 
+
 #define USER_EP_CAP (2)
 
 
@@ -6381,6 +6382,7 @@ void __conditional_panic(int condition, const char *message, const char *file,
 #define TTY_NAME CONFIG_SOS_STARTUP_APP
 #define TTY_PRIORITY (0)
 #define TTY_EP_BADGE (101)
+
 
 
 
@@ -6425,16 +6427,16 @@ typedef struct _process_t {
 
 
 typedef struct _proxy_client_config_t {
-    seL4_CPtr local_cap;
-    seL4_Word badge;
-    seL4_Word udp_port;
+    seL4_CPtr ep_cap;
+    seL4_CPtr tcb_cap;
+    seL4_Word port;
+    seL4_Word ip;
     uint8_t psk[64+1];
     uint8_t iv[32+1];
 } proxy_client_config_t;
 
 typedef struct _proxy_config_t {
     seL4_Word enable_encryption;
-    seL4_Word forward_ip_and_port;
     proxy_client_config_t clients[16];
     seL4_Word num_clients;
 } proxy_config_t;
@@ -6454,6 +6456,16 @@ seL4_CPtr _sos_interrupt_ep_cap;
 
 extern fhandle_t mnt_point;
 
+unsigned int decode_ip(char *ip) {
+    unsigned int a, b, c, d;
+    sscanf(ip, "%i.%i.%i.%i", &a, &b, &c, &d);
+
+    return ((unsigned int)((d) & 0xff) << 24) |
+            ((unsigned int)((c) & 0xff) << 16) |
+            ((unsigned int)((b) & 0xff) << 8) |
+            (unsigned int)((a) & 0xff);
+}
+
 
 void handle_syscall(seL4_Word badge, int num_args) {
     seL4_Word syscall_number;
@@ -6468,7 +6480,7 @@ void handle_syscall(seL4_Word badge, int num_args) {
 
 
     reply_cap = cspace_save_reply_cap(cur_cspace);
-    ((reply_cap != 0) ? ((void)0) : (__assert_fail("reply_cap != CSPACE_NULL", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", 141, __func__)));
+    ((reply_cap != 0) ? ((void)0) : (__assert_fail("reply_cap != CSPACE_NULL", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", 153, __func__)));
 
 
     switch (syscall_number) {
@@ -6542,7 +6554,7 @@ void syscall_loop(seL4_CPtr ep) {
 
                                                                        ;
 
-            ((!"Unable to handle vm faults") ? ((void)0) : (__assert_fail("!\"Unable to handle vm faults\"", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", 215, __func__)));
+            ((!"Unable to handle vm faults") ? ((void)0) : (__assert_fail("!\"Unable to handle vm faults\"", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", 227, __func__)));
         }else if(label == seL4_NoFault) {
 
             handle_syscall(badge, seL4_MessageInfo_get_length(message) - 1);
@@ -6623,7 +6635,7 @@ seL4_CPtr create_worker_thread(process_t *proc, seL4_CPtr user_syscall_cap, seL4
 
 
     seL4_Word ipc_buffer_addr = ut_alloc(12);
-    __conditional_panic(!proc->ipc_buffer_addr, "No memory for ipc buffer", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 296);
+    __conditional_panic(!proc->ipc_buffer_addr, "No memory for ipc buffer", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 308);
 
 
     err = cspace_ut_retype_addr(ipc_buffer_addr,
@@ -6631,11 +6643,11 @@ seL4_CPtr create_worker_thread(process_t *proc, seL4_CPtr user_syscall_cap, seL4
                                  12,
                                  cur_cspace,
                                  &ipc_buffer_cap);
-    __conditional_panic(err, "Unable to allocate page for IPC buffer", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 304);
+    __conditional_panic(err, "Unable to allocate page for IPC buffer", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 316);
 
 
     seL4_Word tcb_addr = ut_alloc(9);
-    __conditional_panic(!tcb_addr, "No memory for new worker TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 308);
+    __conditional_panic(!tcb_addr, "No memory for new worker TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 320);
 
 
     err = cspace_ut_retype_addr(tcb_addr,
@@ -6643,7 +6655,7 @@ seL4_CPtr create_worker_thread(process_t *proc, seL4_CPtr user_syscall_cap, seL4
                                  9,
                                  cur_cspace,
                                  &tcb_cap);
-    __conditional_panic(err, "Failed to create TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 316);
+    __conditional_panic(err, "Failed to create TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 328);
 
 
     err = seL4_TCB_Configure(tcb_cap,
@@ -6655,7 +6667,7 @@ seL4_CPtr create_worker_thread(process_t *proc, seL4_CPtr user_syscall_cap, seL4
                              seL4_CapData_Badge_new(0),
                              ipc_buffer_vaddr,
                              ipc_buffer_cap);
-    __conditional_panic(err, "Unable to configure new TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 328);
+    __conditional_panic(err, "Unable to configure new TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 340);
 
 
     seL4_CPtr user_tcb_cap;
@@ -6671,9 +6683,9 @@ seL4_CPtr create_worker_thread(process_t *proc, seL4_CPtr user_syscall_cap, seL4
                    ipc_buffer_vaddr,
                    seL4_AllRights,
                    seL4_ARM_Default_VMAttributes);
-    __conditional_panic(err, "Unable to map IPC buffer for user app", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 344);
+    __conditional_panic(err, "Unable to map IPC buffer for user app", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 356);
 
-    return tcb_cap;
+    return user_tcb_cap;
 }
 
 void start_process(char* app_name, seL4_CPtr syscall_ep, process_t *proc, uint32_t num_extra_threads) {
@@ -6694,10 +6706,10 @@ void start_process(char* app_name, seL4_CPtr syscall_ep, process_t *proc, uint32
     proc->vroot_addr = ut_alloc(14);
     __conditional_panic(!proc->vroot_addr, "No memory for new Page Directory",
                                                         "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c"
-# 365 "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c"
+# 377 "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c"
     , __func__,
-                                                        366
-# 365 "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c"
+                                                        378
+# 377 "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c"
     )
                                                          ;
     err = cspace_ut_retype_addr(proc->vroot_addr,
@@ -6705,11 +6717,11 @@ void start_process(char* app_name, seL4_CPtr syscall_ep, process_t *proc, uint32
                                 14,
                                 cur_cspace,
                                 &proc->vroot);
-    __conditional_panic(err, "Failed to allocate page directory cap for client", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 372);
+    __conditional_panic(err, "Failed to allocate page directory cap for client", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 384);
 
 
     proc->croot = cspace_create(1);
-    ((proc->croot != ((void*)0)) ? ((void)0) : (__assert_fail("proc->croot != NULL", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", 376, __func__)));
+    ((proc->croot != ((void*)0)) ? ((void)0) : (__assert_fail("proc->croot != NULL", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", 388, __func__)));
 
 
     cspace_mint_cap(proc->croot,
@@ -6721,13 +6733,13 @@ void start_process(char* app_name, seL4_CPtr syscall_ep, process_t *proc, uint32
 
 
     proc->ipc_buffer_addr = ut_alloc(12);
-    __conditional_panic(!proc->ipc_buffer_addr, "No memory for ipc buffer", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 388);
+    __conditional_panic(!proc->ipc_buffer_addr, "No memory for ipc buffer", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 400);
     err = cspace_ut_retype_addr(proc->ipc_buffer_addr,
                                  seL4_ARM_SmallPageObject,
                                  12,
                                  cur_cspace,
                                  &proc->ipc_buffer_cap);
-    __conditional_panic(err, "Unable to allocate page for IPC buffer", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 394);
+    __conditional_panic(err, "Unable to allocate page for IPC buffer", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 406);
 
 
 
@@ -6741,54 +6753,54 @@ void start_process(char* app_name, seL4_CPtr syscall_ep, process_t *proc, uint32
 
 
     proc->tcb_addr = ut_alloc(9);
-    __conditional_panic(!proc->tcb_addr, "No memory for new TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 408);
+    __conditional_panic(!proc->tcb_addr, "No memory for new TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 420);
     err = cspace_ut_retype_addr(proc->tcb_addr,
                                  seL4_TCBObject,
                                  9,
                                  cur_cspace,
                                  &proc->tcb_cap);
-    __conditional_panic(err, "Failed to create TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 414);
+    __conditional_panic(err, "Failed to create TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 426);
 
 
     err = seL4_TCB_Configure(proc->tcb_cap, user_ep_cap, (0),
                              proc->croot->root_cnode, seL4_CapData_Badge_new(0),
                              proc->vroot, seL4_CapData_Badge_new(0), (0xA0000000),
                              proc->ipc_buffer_cap);
-    __conditional_panic(err, "Unable to configure new TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 421);
+    __conditional_panic(err, "Unable to configure new TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 433);
 
 
 
 
     do { if ((1) < 5){ printf("\033[22;33m"); plogf("\nStarting \"%s\"...\n", app_name); printf("\033[0;0m"); } } while (0);
     elf_base = cpio_get_file(_cpio_archive, app_name, &elf_size);
-    __conditional_panic(!elf_base, "Unable to locate cpio header", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 428);
+    __conditional_panic(!elf_base, "Unable to locate cpio header", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 440);
 
 
     err = elf_load(proc->vroot, elf_base);
-    __conditional_panic(err, "Failed to load elf image", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 432);
+    __conditional_panic(err, "Failed to load elf image", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 444);
 
 
 
     stack_addr = ut_alloc(12);
-    __conditional_panic(!stack_addr, "No memory for stack", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 437);
+    __conditional_panic(!stack_addr, "No memory for stack", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 449);
     err = cspace_ut_retype_addr(stack_addr,
                                  seL4_ARM_SmallPageObject,
                                  12,
                                  cur_cspace,
                                  &stack_cap);
-    __conditional_panic(err, "Unable to allocate page for stack", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 443);
+    __conditional_panic(err, "Unable to allocate page for stack", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 455);
 
 
     err = map_page(stack_cap, proc->vroot,
                    (0x90000000) - (1 << 12),
                    seL4_AllRights, seL4_ARM_Default_VMAttributes);
-    __conditional_panic(err, "Unable to map stack IPC buffer for user app", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 449);
+    __conditional_panic(err, "Unable to map stack IPC buffer for user app", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 461);
 
 
     err = map_page(proc->ipc_buffer_cap, proc->vroot,
                    (0xA0000000),
                    seL4_AllRights, seL4_ARM_Default_VMAttributes);
-    __conditional_panic(err, "Unable to map IPC buffer for user app", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 455);
+    __conditional_panic(err, "Unable to map IPC buffer for user app", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 467);
 
 
     for(uint32_t i = 1; i <= num_extra_threads; i++) {
@@ -6813,28 +6825,28 @@ static void _sos_ipc_init(seL4_CPtr* ipc_ep, seL4_CPtr* async_ep){
 
 
     aep_addr = ut_alloc(4);
-    __conditional_panic(!aep_addr, "No memory for async endpoint", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 480);
+    __conditional_panic(!aep_addr, "No memory for async endpoint", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 492);
     err = cspace_ut_retype_addr(aep_addr,
                                 seL4_AsyncEndpointObject,
                                 4,
                                 cur_cspace,
                                 async_ep);
-    __conditional_panic(err, "Failed to allocate c-slot for Interrupt endpoint", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 486);
+    __conditional_panic(err, "Failed to allocate c-slot for Interrupt endpoint", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 498);
 
 
     err = seL4_TCB_BindAEP(seL4_CapInitThreadTCB, *async_ep);
-    __conditional_panic(err, "Failed to bind ASync EP to TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 490);
+    __conditional_panic(err, "Failed to bind ASync EP to TCB", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 502);
 
 
 
     ep_addr = ut_alloc(4);
-    __conditional_panic(!ep_addr, "No memory for endpoint", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 495);
+    __conditional_panic(!ep_addr, "No memory for endpoint", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 507);
     err = cspace_ut_retype_addr(ep_addr,
                                 seL4_EndpointObject,
                                 4,
                                 cur_cspace,
                                 ipc_ep);
-    __conditional_panic(err, "Failed to allocate c-slot for IPC endpoint", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 501);
+    __conditional_panic(err, "Failed to allocate c-slot for IPC endpoint", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 513);
 }
 
 
@@ -6845,17 +6857,17 @@ static void _sos_init(seL4_CPtr* ipc_ep, seL4_CPtr* async_ep){
 
 
     _boot_info = seL4_GetBootInfo();
-    __conditional_panic(!_boot_info, "Failed to retrieve boot info\n", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 512);
+    __conditional_panic(!_boot_info, "Failed to retrieve boot info\n", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 524);
     if(5 > 0){
         print_bootinfo(_boot_info);
     }
 
 
     err = ut_table_init(_boot_info);
-    __conditional_panic(err, "Failed to initialise Untyped Table\n", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 519);
+    __conditional_panic(err, "Failed to initialise Untyped Table\n", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 531);
 
     dma_addr = ut_steal_mem((22));
-    __conditional_panic(dma_addr == 0, "Failed to reserve DMA memory\n", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 522);
+    __conditional_panic(dma_addr == 0, "Failed to reserve DMA memory\n", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 534);
 
 
     ut_find_memory(&low, &high);
@@ -6866,11 +6878,11 @@ static void _sos_init(seL4_CPtr* ipc_ep, seL4_CPtr* async_ep){
 
     err = cspace_root_task_bootstrap(ut_alloc, ut_free, ut_translate,
                                      malloc, free);
-    __conditional_panic(err, "Failed to initialise the c space\n", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 533);
+    __conditional_panic(err, "Failed to initialise the c space\n", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 545);
 
 
     err = dma_init(dma_addr, (22));
-    __conditional_panic(err, "Failed to intiialise DMA memory\n", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 537);
+    __conditional_panic(err, "Failed to intiialise DMA memory\n", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 549);
 
 
 
@@ -6879,34 +6891,36 @@ static void _sos_init(seL4_CPtr* ipc_ep, seL4_CPtr* async_ep){
 
 static inline seL4_CPtr badge_irq_ep(seL4_CPtr ep, seL4_Word badge) {
     seL4_CPtr badged_cap = cspace_mint_cap(cur_cspace, cur_cspace, ep, seL4_AllRights, seL4_CapData_Badge_new(badge | (1 << (28 - 1))));
-    __conditional_panic(!badged_cap, "Failed to allocate badged cap", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 546);
+    __conditional_panic(!badged_cap, "Failed to allocate badged cap", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 558);
     return badged_cap;
 }
 
-seL4_CPtr connect_processes(process_t *client, seL4_Word client_perms, seL4_Word client_badge, process_t *server, seL4_Word server_perms, seL4_Word server_badge) {
+seL4_CPtr connect_processes(process_t *client, seL4_Word client_perms, seL4_CPtr *client_cap, process_t *server, seL4_Word server_perms, seL4_CPtr *server_cap) {
     int err;
     seL4_CPtr ep_cap;
     seL4_Word ep_addr = ut_alloc(4);
-    __conditional_panic(!ep_addr, "No memory for endpoint", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 554);
+    __conditional_panic(!ep_addr, "No memory for endpoint", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 566);
 
     err = cspace_ut_retype_addr(ep_addr,
                           seL4_EndpointObject,
                           4,
                           cur_cspace,
                           &ep_cap);
-    __conditional_panic(err, "Failed to allocate c-slot for endpoint.", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 561);
+    __conditional_panic(err, "Failed to allocate c-slot for endpoint.", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 573);
 
-    cspace_mint_cap(client->croot,
-                    cur_cspace,
-                    ep_cap,
-                    client_perms,
-                    seL4_CapData_Badge_new(client_badge));
+    *client_cap = cspace_mint_cap(client->croot,
+                                  cur_cspace,
+                                  ep_cap,
+                                  client_perms,
+                                  seL4_CapData_Badge_new(0));
 
-    cspace_mint_cap(server->croot,
-                    cur_cspace,
-                    ep_cap,
-                    server_perms,
-                    seL4_CapData_Badge_new(server_badge));
+    *server_cap = cspace_mint_cap(server->croot,
+                                  cur_cspace,
+                                  ep_cap,
+                                  server_perms,
+                                  seL4_CapData_Badge_new(0));
+
+    printf("SOS: connecting %d -> %d\n", *client_cap, *server_cap);
     return ep_cap;
 }
 
@@ -6922,14 +6936,14 @@ seL4_CPtr allocate_and_map_page(process_t *process, seL4_Word v_dest, seL4_Word 
                                 12,
                                 cur_cspace,
                                 &mem_cap);
-    __conditional_panic(err, "Unable to retype page.", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 589);
+    __conditional_panic(err, "Unable to retype page.", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 603);
 
     err = map_page(mem_cap,
                    process->vroot,
                    v_dest,
                    permissions,
                    seL4_ARM_Default_VMAttributes);
-    __conditional_panic(err, "Unable to map page", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 596);
+    __conditional_panic(err, "Unable to map page", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 610);
     return mem_cap;
 }
 
@@ -6939,21 +6953,21 @@ void initialize_process_config(process_t *process, seL4_Word v_dest, uint8_t *bu
     int err;
     seL4_CPtr page_cap[2];
 
-    __conditional_panic(buffer_len > (1 << 12), "Config buffer too large", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 606);
+    __conditional_panic(buffer_len > (1 << 12), "Config buffer too large", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 620);
 
     page_cap[0] = allocate_and_map_page(process, v_dest, seL4_AllRights);
     page_cap[1] = cspace_copy_cap(cur_cspace,
                                   cur_cspace,
                                   page_cap[0],
                                   seL4_AllRights);
-    __conditional_panic(!page_cap[1], "Unable to duplicate page cap", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 613);
+    __conditional_panic(!page_cap[1], "Unable to duplicate page cap", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 627);
 
     err = map_page(page_cap[1],
                    seL4_CapInitThreadVSpace,
                    (seL4_Word)local_v_dest,
                    seL4_AllRights,
                    seL4_ARM_Default_VMAttributes);
-    __conditional_panic(err, "Unable to duplicate page mapping in root task", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 620);
+    __conditional_panic(err, "Unable to duplicate page mapping in root task", "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c", __func__, 634);
 
     memcpy(local_v_dest, buffer, buffer_len);
     local_v_dest += (1 << 12);
@@ -6969,36 +6983,81 @@ int main(void) {
     do { if ((0) < 5){ printf("\033[22;33m"); plogf("\nSOS Starting...\n"); printf("\033[0;0m"); } } while (0);
 
     _sos_init(&_sos_ipc_ep_cap, &_sos_interrupt_ep_cap);
-# 747 "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c"
+# 761 "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c"
     process_t web;
-    process_t web_proxy;
     process_t temp_control;
     process_t sensor;
     process_t fan;
     process_t alarm;
 
-
-    proxy_config_t web_proxy_config;
-    proxy_config_t temp_control_config;
     proxy_config_t sensor_config;
     proxy_config_t fan_config;
-# 771 "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c"
+
+
+    char sensor_psk[] = "C480FD91B1B29293C1BD65D1E35B0E210B5B189BD77643C6B5B731B33FC4D2C1";
+    char fan_psk[] = "7D74FF4C3705DF5FCA68418BFCFBA32E9F246A6C9B85F2480F95B9D3BC32612E";
+    char sensor_iv[] = "827C43085639350AB66A23B700C69B2A";
+    char fan_iv[] = "BE0721CAC6FFBC2ED3698BC84068FE7F";
+# 784 "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c"
     start_process("web", _sos_ipc_ep_cap, &web, 0);
     start_process("temp_control", _sos_ipc_ep_cap, &temp_control, 1);
-    start_process("proxy", _sos_ipc_ep_cap, &web_proxy, 2);
-
-    connect_processes(&temp_control, seL4_AllRights, 0, &web, seL4_AllRights, 0);
-    connect_processes(&web, seL4_AllRights, 0, &web_proxy, seL4_AllRights, 0);
+    start_process("proxy", _sos_ipc_ep_cap, &fan, 1);
+    start_process("proxy", _sos_ipc_ep_cap, &sensor, 1);
 
 
-    web_proxy_config.enable_encryption = 0;
-    web_proxy_config.forward_ip_and_port = 1;
-    web_proxy_config.num_clients = 1;
-    web_proxy_config.clients[0].local_cap = 3;
-    web_proxy_config.clients[0].badge = 0;
-    web_proxy_config.clients[0].udp_port = 4444;
-    initialize_process_config(&web_proxy, (seL4_Word)(0x70000000), (uint8_t *)(&web_proxy_config), sizeof(web_proxy_config));
-# 796 "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c"
+
+    sensor_config.enable_encryption = 1;
+    sensor_config.num_clients = 1;
+    sensor_config.clients[0].tcb_cap = 3;
+    sensor_config.clients[0].port = 4444;
+    sensor_config.clients[0].ip = decode_ip("192.168.168.2");
+    memcpy(sensor_config.clients[0].psk, sensor_psk, sizeof(sensor_psk));
+    memcpy(sensor_config.clients[0].iv, sensor_iv, sizeof(sensor_iv));
+
+    seL4_CPtr temp_control_cap_delete1;
+
+    connect_processes(&temp_control,
+                      seL4_AllRights,
+                      &temp_control_cap_delete1,
+                      &sensor,
+                      seL4_AllRights,
+                      &sensor_config.clients[0].ep_cap);
+
+    initialize_process_config(&sensor, (seL4_Word)(0x70000000), (uint8_t *)(&sensor_config), sizeof(sensor_config));
+
+
+
+    fan_config.enable_encryption = 1;
+    fan_config.num_clients = 1;
+    fan_config.clients[0].tcb_cap = 3;
+    fan_config.clients[0].port = 4445;
+    fan_config.clients[0].ip = decode_ip("192.168.168.2");
+    memcpy(fan_config.clients[0].psk, fan_psk, sizeof(fan_psk));
+    memcpy(fan_config.clients[0].iv, fan_iv, sizeof(fan_iv));
+
+    seL4_CPtr temp_control_cap_delete2;
+
+    connect_processes(&temp_control,
+                      seL4_AllRights,
+                      &temp_control_cap_delete2,
+                      &fan,
+                      seL4_AllRights,
+                      &fan_config.clients[0].ep_cap);
+
+    initialize_process_config(&fan, (seL4_Word)(0x70000000), (uint8_t *)(&fan_config), sizeof(fan_config));
+
+
+
+    seL4_CPtr temp_control_cap_delete3;
+    seL4_CPtr web_cap_delete;
+
+    connect_processes(&temp_control,
+                      seL4_AllRights,
+                      &temp_control_cap_delete3,
+                      &web,
+                      seL4_AllRights,
+                      &web_cap_delete);
+# 879 "/home/mint/seL4/dhs-demo-feb-2018/apps/sos/src/main.c"
     do { if ((0) < 5){ printf("\033[22;33m"); plogf("\nSOS entering syscall loop\n"); printf("\033[0;0m"); } } while (0);
     syscall_loop(_sos_ipc_ep_cap);
 

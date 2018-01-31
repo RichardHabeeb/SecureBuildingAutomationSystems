@@ -35,6 +35,7 @@
 #include <sys/debug.h>
 #include <sys/panic.h>
 
+
 /* This is the index where a clients syscall enpoint will
  * be stored in the clients cspace. */
 #define USER_EP_CAP          (2)
@@ -51,6 +52,7 @@
 #define TTY_NAME             CONFIG_SOS_STARTUP_APP
 #define TTY_PRIORITY         (0)
 #define TTY_EP_BADGE         (101)
+
 
 /* The linker will link this symbol to the start address  *
  * of an archive of attached applications.                */
@@ -95,16 +97,16 @@ typedef struct _process_t {
 
 
 typedef struct _proxy_client_config_t {
-    seL4_CPtr local_cap;
-    seL4_Word badge;
-    seL4_Word udp_port;
+    seL4_CPtr ep_cap;
+    seL4_CPtr tcb_cap;
+    seL4_Word port;
+    seL4_Word ip;
     uint8_t psk[64+1]; /* Put key as a hex string here. (256-bit)+\n */
     uint8_t iv[32+1]; /* Put IV as a hex string here. */
 } proxy_client_config_t;
 
 typedef struct _proxy_config_t {
     seL4_Word enable_encryption;
-    seL4_Word forward_ip_and_port;
     proxy_client_config_t clients[CONFIG_APP_PROXY_MAX_NUM_CLIENTS];
     seL4_Word num_clients;
 } proxy_config_t;
@@ -123,6 +125,16 @@ seL4_CPtr _sos_interrupt_ep_cap;
  * NFS mount point
  */
 extern fhandle_t mnt_point;
+
+unsigned int decode_ip(char *ip) {
+    unsigned int a, b, c, d;
+    sscanf(ip, "%i.%i.%i.%i", &a, &b, &c, &d);
+
+    return  ((unsigned int)((d) & 0xff) << 24) | 
+            ((unsigned int)((c) & 0xff) << 16) | 
+            ((unsigned int)((b) & 0xff) << 8)  | 
+            (unsigned int)((a) & 0xff);
+}
 
 
 void handle_syscall(seL4_Word badge, int num_args) {
@@ -343,7 +355,7 @@ seL4_CPtr create_worker_thread(process_t *proc, seL4_CPtr user_syscall_cap, seL4
                    seL4_ARM_Default_VMAttributes);
     conditional_panic(err, "Unable to map IPC buffer for user app");
 
-    return tcb_cap;
+    return user_tcb_cap;
 }
 
 void start_process(char* app_name, seL4_CPtr syscall_ep, process_t *proc, uint32_t num_extra_threads) {
@@ -547,10 +559,10 @@ static inline seL4_CPtr badge_irq_ep(seL4_CPtr ep, seL4_Word badge) {
     return badged_cap;
 }
 
-seL4_CPtr connect_processes(process_t *client, seL4_Word client_perms, seL4_Word client_badge, process_t *server, seL4_Word server_perms, seL4_Word server_badge) {
+seL4_CPtr connect_processes(process_t *client, seL4_Word client_perms, seL4_CPtr *client_cap, process_t *server, seL4_Word server_perms, seL4_CPtr *server_cap) {
     int err;
     seL4_CPtr ep_cap;
-    seL4_Word ep_addr = ut_alloc(seL4_EndpointBits); 
+    seL4_Word ep_addr = ut_alloc(seL4_EndpointBits);
     conditional_panic(!ep_addr, "No memory for endpoint");
 
     err = cspace_ut_retype_addr(ep_addr,
@@ -560,17 +572,19 @@ seL4_CPtr connect_processes(process_t *client, seL4_Word client_perms, seL4_Word
                           &ep_cap);
     conditional_panic(err, "Failed to allocate c-slot for endpoint.");
 
-    cspace_mint_cap(client->croot,
-                    cur_cspace,
-                    ep_cap,
-                    client_perms,
-                    seL4_CapData_Badge_new(client_badge));
+    *client_cap = cspace_mint_cap(client->croot,
+                                  cur_cspace,
+                                  ep_cap,
+                                  client_perms,
+                                  seL4_CapData_Badge_new(0));
+    
+    *server_cap = cspace_mint_cap(server->croot,
+                                  cur_cspace,
+                                  ep_cap,
+                                  server_perms,
+                                  seL4_CapData_Badge_new(0));
 
-    cspace_mint_cap(server->croot,
-                    cur_cspace,
-                    ep_cap,
-                    server_perms,
-                    seL4_CapData_Badge_new(server_badge));
+    printf("SOS: connecting %d -> %d\n", *client_cap, *server_cap);
     return ep_cap;
 }
 
@@ -745,20 +759,19 @@ int main(void) {
 
     //TODO don't put all these on the stack
     process_t web;
-    process_t web_proxy;
     process_t temp_control;
     process_t sensor;
     process_t fan;
     process_t alarm;
 
-    //proxy_config_t web_config;
-    proxy_config_t web_proxy_config;
-    proxy_config_t temp_control_config;
     proxy_config_t sensor_config;
     proxy_config_t fan_config;
-    //proxy_config_t alarm_config;
 
 
+    char sensor_psk[] = "C480FD91B1B29293C1BD65D1E35B0E210B5B189BD77643C6B5B731B33FC4D2C1";
+    char fan_psk[] = "7D74FF4C3705DF5FCA68418BFCFBA32E9F246A6C9B85F2480F95B9D3BC32612E";
+    char sensor_iv[] = "827C43085639350AB66A23B700C69B2A";
+    char fan_iv[] = "BE0721CAC6FFBC2ED3698BC84068FE7F";
 
 #if defined(CONFIG_APP_WEB) && \
     defined(CONFIG_APP_TEMP_CONTROL) && \
@@ -770,19 +783,89 @@ int main(void) {
     //start_process("alarm", seL4_CapNull, &alarm, 0); // 1 local cap
     start_process("web", _sos_ipc_ep_cap, &web, 0); // 2 local caps
     start_process("temp_control", _sos_ipc_ep_cap, &temp_control, 1); 
-    start_process("proxy", _sos_ipc_ep_cap, &web_proxy, 2);
+    start_process("proxy", _sos_ipc_ep_cap, &fan, 1);
+    start_process("proxy", _sos_ipc_ep_cap, &sensor, 1);
 
-    connect_processes(&temp_control, seL4_AllRights, 0, &web, seL4_AllRights, 0); //TODO trim rights
-    connect_processes(&web, seL4_AllRights, 0, &web_proxy, seL4_AllRights, 0);
 
-    //TODO migrate some of this to Kconfig
-    web_proxy_config.enable_encryption = 0;
-    web_proxy_config.forward_ip_and_port = 1;
-    web_proxy_config.num_clients = 1;
-    web_proxy_config.clients[0].local_cap = 3;
-    web_proxy_config.clients[0].badge = 0;
-    web_proxy_config.clients[0].udp_port = 4444;
-    initialize_process_config(&web_proxy, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&web_proxy_config), sizeof(web_proxy_config));
+    /* Setup sensor proxy */
+    sensor_config.enable_encryption = 1;
+    sensor_config.num_clients = 1;
+    sensor_config.clients[0].tcb_cap = 3;
+    sensor_config.clients[0].port = 4444; //TODO stahp
+    sensor_config.clients[0].ip = decode_ip("192.168.168.2"); //TODO no.
+    memcpy(sensor_config.clients[0].psk, sensor_psk, sizeof(sensor_psk)); 
+    memcpy(sensor_config.clients[0].iv, sensor_iv, sizeof(sensor_iv));
+
+    seL4_CPtr temp_control_cap_delete1; //TODO make TC config
+
+    connect_processes(&temp_control, 
+                      seL4_AllRights, //TODO trim
+                      &temp_control_cap_delete1,
+                      &sensor,
+                      seL4_AllRights,
+                      &sensor_config.clients[0].ep_cap);
+     
+    initialize_process_config(&sensor, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&sensor_config), sizeof(sensor_config));
+
+
+    /* Setup fan proxy */
+    fan_config.enable_encryption = 1;
+    fan_config.num_clients = 1;
+    fan_config.clients[0].tcb_cap = 3;
+    fan_config.clients[0].port = 4445;
+    fan_config.clients[0].ip = decode_ip("192.168.168.2"); //TODO no.
+    memcpy(fan_config.clients[0].psk, fan_psk, sizeof(fan_psk)); 
+    memcpy(fan_config.clients[0].iv, fan_iv, sizeof(fan_iv));
+
+    seL4_CPtr temp_control_cap_delete2; //TODO make TC config
+
+    connect_processes(&temp_control, 
+                      seL4_AllRights, //TODO trim
+                      &temp_control_cap_delete2,
+                      &fan,
+                      seL4_AllRights,
+                      &fan_config.clients[0].ep_cap);
+     
+    initialize_process_config(&fan, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&fan_config), sizeof(fan_config));
+
+
+
+    seL4_CPtr temp_control_cap_delete3; //TODO make TC config
+    seL4_CPtr web_cap_delete;
+
+    connect_processes(&temp_control,
+                      seL4_AllRights, //TODO trim
+                      &temp_control_cap_delete3,
+                      &web,
+                      seL4_AllRights,
+                      &web_cap_delete);
+
+
+    //connect_processes(&temp_control, seL4_AllRights, 0, &web, seL4_AllRights, 0); //TODO trim rights
+   
+
+//    seL4_CPtr web_send_cap, web_recv_cap; 
+//
+//    connect_processes(&web, 
+//                      seL4_AllRights,
+//                      &web_send_cap,
+//                      &web_proxy,
+//                      seL4_AllRights,
+//                      &web_proxy_config.send_ep_cap);
+//
+//    connect_processes(&web, 
+//                      seL4_AllRights,
+//                      &web_recv_cap,
+//                      &web_proxy,
+//                      seL4_AllRights,
+//                      &web_proxy_config.clients[0].ep_cap);
+//
+//    //TODO migrate some of this to Kconfig
+//    web_proxy_config.enable_encryption = 0;
+//    web_proxy_config.num_clients = 1;
+//    web_proxy_config.clients[0].tcb_cap = 3;
+//   
+//    initialize_process_config(&web_proxy, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&web_proxy_config), sizeof(web_proxy_config));
 
 
 #endif
