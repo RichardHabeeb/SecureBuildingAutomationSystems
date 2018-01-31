@@ -4,12 +4,6 @@ deps_config := \
 	apps/temp_control/Kconfig \
 	apps/web/Kconfig \
 	apps/proxy/Kconfig \
-	apps/lpong/Kconfig \
-	apps/lping/Kconfig \
-	apps/pong/Kconfig \
-	apps/ping/Kconfig \
-	apps/proxy1/Kconfig \
-	apps/tty_test/Kconfig \
 	apps/sosh/Kconfig \
 	apps/sos/Kconfig \
 	libs/libsel4sync/Kconfig \

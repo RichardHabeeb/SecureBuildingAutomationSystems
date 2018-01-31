@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Project Configuration
-# Fri Jan 26 18:20:26 2018
+# Mon Jan 29 21:17:48 2018
 #
 
 #
@@ -106,10 +106,15 @@ CONFIG_SOS_STARTUP_APP="lping"
 # CONFIG_APP_SOSH is not set
 # CONFIG_APP_TTY_TEST is not set
 # CONFIG_APP_PROXY1 is not set
+# CONFIG_APP_PROXY_TEMP_CONTROL is not set
+CONFIG_APP_PROXY_SENSOR=y
+CONFIG_APP_PROXY_FAN=y
 # CONFIG_APP_PING is not set
 # CONFIG_APP_PONG is not set
 # CONFIG_APP_LPING is not set
 # CONFIG_APP_LPONG is not set
+CONFIG_APP_PROXY=y
+CONFIG_APP_PROXY_MAX_NUM_CLIENTS=16
 CONFIG_APP_WEB=y
 CONFIG_APP_TEMP_CONTROL=y
 

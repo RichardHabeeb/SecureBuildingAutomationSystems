@@ -8,6 +8,11 @@
 #include <stdint.h>
 #include <sel4/sel4.h>
 #include <semaphore.h>
+
+#include <sos.h>
+#include <udp.h>
+#include <config.h>
+
 #include <autoconf.h>
 
 #include "rijndael-api-fst.h"
@@ -38,22 +43,6 @@ enum {
     RecievePacket = 1
 };
 
-//TODO move to h file
-typedef struct _proxy_client_config_t {
-    seL4_CPtr ep_cap;
-    seL4_CPtr tcb_cap;
-    seL4_Word port;
-    seL4_Word ip;
-    uint8_t psk[64+1]; /* Put key as a hex string here. (256-bit)+\n */
-    uint8_t iv[32+1]; /* Put IV as a hex string here. */
-} proxy_client_config_t;
-
-typedef struct _proxy_config_t {
-    seL4_Word enable_encryption;
-    proxy_client_config_t clients[CONFIG_APP_PROXY_MAX_NUM_CLIENTS];
-    seL4_Word num_clients;
-} proxy_config_t;
-
 /*------------------------------------------------------------------------------
     VARIABLES
 ------------------------------------------------------------------------------*/
@@ -74,40 +63,8 @@ cipherInstance cipher_d[CONFIG_APP_PROXY_MAX_NUM_CLIENTS];
     PROCEEDURES
 ------------------------------------------------------------------------------*/
 
-static void send_packet(seL4_Word ip, seL4_Word port, char * data, uint32_t len) {
-    seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 0, 3+len);
-    seL4_SetTag(tag);
-    seL4_SetMR(0, 1);
-    seL4_SetMR(1, ip);
-    seL4_SetMR(2, port);
-    memcpy(seL4_GetIPCBuffer()->msg + 3, data, len);
-
-    seL4_Call(SYSCALL_EP_SLOT, tag);
-}
-
-
-static uint32_t recv_packet(seL4_Word port, char * data, uint32_t max_len, seL4_Word *ip) {
-    uint32_t len;
-    seL4_MessageInfo_t tag;
-
-    tag = seL4_MessageInfo_new(0, 0, 0, 2);
-    seL4_SetTag(tag);
-    seL4_SetMR(0, 2);
-    seL4_SetMR(1, port);
-
-    tag = seL4_Call(SYSCALL_EP_SLOT, tag);
-    len = MIN(max_len, seL4_MessageInfo_get_length(tag));
-
-    ip = seL4_GetMR(0);
-    //port = seL4_GetMR(1);
-    memcpy(data, seL4_GetIPCBuffer()->msg + 2, len);
-    
-    return len;
-}
-
-
 void worker_thread(void) {
-    static char recieved_data[(1 << seL4_PageBits)];
+    static uint8_t recieved_data[(1 << seL4_PageBits)];
     uint32_t len;
     uint32_t id;
     seL4_Word port;
@@ -132,7 +89,7 @@ void worker_thread(void) {
                 len = MIN(sizeof(recieved_data), seL4_MessageInfo_get_length(tag));
         
                 if(config->enable_encryption) {
-                    len = blockEncrypt(&cipher_e[id], &key_e[id], seL4_GetIPCBuffer()->msg, len*8, recieved_data)/8;
+                    len = blockEncrypt(&cipher_e[id], &key_e[id], (uint8_t *)seL4_GetIPCBuffer()->msg, len*8, recieved_data)/8;
                 } else {
                     memcpy(recieved_data, seL4_GetIPCBuffer()->msg, len);
                 }
@@ -147,7 +104,7 @@ void worker_thread(void) {
                 len = recv_packet(port, recieved_data, sizeof(recieved_data), &remote_ip_address);
         
                 if(config->enable_encryption) {
-                    len = blockDecrypt(&cipher_d, &key_d, recieved_data, len*8, seL4_GetIPCBuffer()->msg)/8;
+                    len = blockDecrypt(&cipher_d[id], &key_d[id], recieved_data, len*8, (uint8_t *)seL4_GetIPCBuffer()->msg)/8;
                 } else {
                     memcpy(seL4_GetIPCBuffer()->msg, recieved_data, len);
                 }
@@ -169,8 +126,6 @@ void worker_thread(void) {
 
 
 int main(void) {
-    static unsigned char recieved_data[4096];
-
     int err;
 
     printf("PROXY: Started.\n");

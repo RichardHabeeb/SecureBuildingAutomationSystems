@@ -29,6 +29,8 @@
 
 #include "udp_syscall.h"
 
+#include <config.h>
+
 #include <autoconf.h>
 
 #define verbose 5
@@ -96,20 +98,6 @@ typedef struct _process_t {
 
 
 
-typedef struct _proxy_client_config_t {
-    seL4_CPtr ep_cap;
-    seL4_CPtr tcb_cap;
-    seL4_Word port;
-    seL4_Word ip;
-    uint8_t psk[64+1]; /* Put key as a hex string here. (256-bit)+\n */
-    uint8_t iv[32+1]; /* Put IV as a hex string here. */
-} proxy_client_config_t;
-
-typedef struct _proxy_config_t {
-    seL4_Word enable_encryption;
-    proxy_client_config_t clients[CONFIG_APP_PROXY_MAX_NUM_CLIENTS];
-    seL4_Word num_clients;
-} proxy_config_t;
 
 /*
  * A dummy starting syscall

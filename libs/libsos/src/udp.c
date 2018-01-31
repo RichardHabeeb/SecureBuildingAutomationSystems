@@ -25,54 +25,65 @@
 /*------------------------------------------------------------------------------
     INCLUDES
 ------------------------------------------------------------------------------*/
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <sos.h>
-#include <udp.h>
 #include <sel4/sel4.h>
 
-#include "capnp_c.h"
-#include "protocol.capnp.h"
-
+#include "udp.h"
 
 /*------------------------------------------------------------------------------
-    DEFINITIONS & CONSTANTS
+    DEFINITIONS
 ------------------------------------------------------------------------------*/
+#define IP4_ADDR(a,b,c,d) \
+        ((unsigned int)((d) & 0xff) << 24) | \
+        ((unsigned int)((c) & 0xff) << 16) | \
+        ((unsigned int)((b) & 0xff) << 8)  | \
+        (unsigned int)((a) & 0xff)
 
-/* Cspace Layout */
-#define CNODE_SLOT              (1)
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
+
 #define SYSCALL_EP_SLOT         (2)
-#define TC_EP_SLOT              (3)
-
-/*------------------------------------------------------------------------------
-    VARIABLES
-------------------------------------------------------------------------------*/
-
-/*------------------------------------------------------------------------------
-    PROTOTYPES
-------------------------------------------------------------------------------*/
 
 /*------------------------------------------------------------------------------
     PROCEEDURES
 ------------------------------------------------------------------------------*/
+unsigned int decode_ip(char *ip) {
+    unsigned int a, b, c, d;
+    sscanf(ip, "%i.%i.%i.%i", &a, &b, &c, &d);
+    return IP4_ADDR(a, b, c, d);
+}
 
-int main(void) {
-    static uint8_t recieved_data[4096];
-    int len;
-    seL4_Word ip;
 
-    printf("WEB: Started.\n");
+void send_packet(seL4_Word ip, seL4_Word port, uint8_t *data, uint32_t len) {
+    seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 0, 3+len);
+    seL4_SetTag(tag);
+    seL4_SetMR(0, 1);
+    seL4_SetMR(1, ip);
+    seL4_SetMR(2, port);
+    memcpy(seL4_GetIPCBuffer()->msg + 3, data, len);
 
-    while(1) {
-        len = recv_packet(6666, recieved_data, sizeof(recieved_data)/sizeof(recieved_data[0]), &ip);
+    seL4_Call(SYSCALL_EP_SLOT, tag);
+}
 
-        // do some stuff with capn proto
 
-        send_packet(ip, 6666, recieved_data, len);
+uint32_t recv_packet(seL4_Word port, uint8_t *data, uint32_t max_len, seL4_Word *ip) {
+    uint32_t len;
+    seL4_MessageInfo_t tag;
 
-    }
-    return 0;
+    tag = seL4_MessageInfo_new(0, 0, 0, 2);
+    seL4_SetTag(tag);
+    seL4_SetMR(0, 2);
+    seL4_SetMR(1, port);
+
+    tag = seL4_Call(SYSCALL_EP_SLOT, tag);
+    len = MIN(max_len, seL4_MessageInfo_get_length(tag));
+
+    *ip = seL4_GetMR(0);
+    //port = seL4_GetMR(1);
+    memcpy(data, seL4_GetIPCBuffer()->msg + 2, len);
+    
+    return len;
 }

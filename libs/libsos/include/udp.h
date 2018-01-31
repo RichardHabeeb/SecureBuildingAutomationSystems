@@ -25,54 +25,21 @@
 /*------------------------------------------------------------------------------
     INCLUDES
 ------------------------------------------------------------------------------*/
-#include <assert.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdint.h>
-#include <sos.h>
-#include <udp.h>
 #include <sel4/sel4.h>
 
-#include "capnp_c.h"
-#include "protocol.capnp.h"
-
-
 /*------------------------------------------------------------------------------
-    DEFINITIONS & CONSTANTS
-------------------------------------------------------------------------------*/
-
-/* Cspace Layout */
-#define CNODE_SLOT              (1)
-#define SYSCALL_EP_SLOT         (2)
-#define TC_EP_SLOT              (3)
-
-/*------------------------------------------------------------------------------
-    VARIABLES
+    DEFINITIONS
 ------------------------------------------------------------------------------*/
 
 /*------------------------------------------------------------------------------
     PROTOTYPES
 ------------------------------------------------------------------------------*/
+unsigned int decode_ip(char *ip);
+void send_packet(seL4_Word ip, seL4_Word port, uint8_t *data, uint32_t len);
+uint32_t recv_packet(seL4_Word port, uint8_t *data, uint32_t max_len, seL4_Word *ip);
 
-/*------------------------------------------------------------------------------
-    PROCEEDURES
-------------------------------------------------------------------------------*/
 
-int main(void) {
-    static uint8_t recieved_data[4096];
-    int len;
-    seL4_Word ip;
 
-    printf("WEB: Started.\n");
 
-    while(1) {
-        len = recv_packet(6666, recieved_data, sizeof(recieved_data)/sizeof(recieved_data[0]), &ip);
-
-        // do some stuff with capn proto
-
-        send_packet(ip, 6666, recieved_data, len);
-
-    }
-    return 0;
-}

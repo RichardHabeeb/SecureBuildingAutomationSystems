@@ -11,18 +11,8 @@
 apps-$(CONFIG_APP_SOS) += sos
 
 sos-components-$(CONFIG_APP_SOSH) += sosh
-sos-components-$(CONFIG_APP_TTY_TEST) += tty_test
 
-sos-components-$(CONFIG_APP_PROXY1) += proxy1
 sos-components-$(CONFIG_APP_PROXY) += proxy
-
-sos-components-$(CONFIG_APP_PING) += ping
-sos-components-$(CONFIG_APP_PONG) += pong
-
-sos-components-$(CONFIG_APP_LPING) += lping
-sos-components-$(CONFIG_APP_LPONG) += lpong
-
-
 sos-components-$(CONFIG_APP_WEB) += web
 sos-components-$(CONFIG_APP_TEMP_CONTROL) += temp_control
 

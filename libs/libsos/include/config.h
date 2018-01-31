@@ -25,54 +25,27 @@
 /*------------------------------------------------------------------------------
     INCLUDES
 ------------------------------------------------------------------------------*/
-#include <assert.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdint.h>
-#include <sos.h>
-#include <udp.h>
 #include <sel4/sel4.h>
 
-#include "capnp_c.h"
-#include "protocol.capnp.h"
-
-
 /*------------------------------------------------------------------------------
-    DEFINITIONS & CONSTANTS
+    DEFINITIONS
 ------------------------------------------------------------------------------*/
 
-/* Cspace Layout */
-#define CNODE_SLOT              (1)
-#define SYSCALL_EP_SLOT         (2)
-#define TC_EP_SLOT              (3)
-
-/*------------------------------------------------------------------------------
-    VARIABLES
-------------------------------------------------------------------------------*/
-
-/*------------------------------------------------------------------------------
-    PROTOTYPES
-------------------------------------------------------------------------------*/
-
-/*------------------------------------------------------------------------------
-    PROCEEDURES
-------------------------------------------------------------------------------*/
-
-int main(void) {
-    static uint8_t recieved_data[4096];
-    int len;
+typedef struct _proxy_client_config_t {
+    seL4_CPtr ep_cap;
+    seL4_CPtr tcb_cap;
+    seL4_Word port;
     seL4_Word ip;
+    char psk[64+1]; /* Put key as a hex string here. (256-bit)+\n */
+    char iv[32+1]; /* Put IV as a hex string here. */
+} proxy_client_config_t;
 
-    printf("WEB: Started.\n");
+typedef struct _proxy_config_t {
+    seL4_Word enable_encryption;
+    proxy_client_config_t clients[CONFIG_APP_PROXY_MAX_NUM_CLIENTS];
+    seL4_Word num_clients;
+} proxy_config_t;
 
-    while(1) {
-        len = recv_packet(6666, recieved_data, sizeof(recieved_data)/sizeof(recieved_data[0]), &ip);
 
-        // do some stuff with capn proto
-
-        send_packet(ip, 6666, recieved_data, len);
-
-    }
-    return 0;
-}
