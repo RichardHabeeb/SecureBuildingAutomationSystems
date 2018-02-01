@@ -29,6 +29,8 @@
 #include <stdint.h>
 #include <sel4/sel4.h>
 
+#define CONFIG_ADDRESS 0x70000000
+
 /*------------------------------------------------------------------------------
     DEFINITIONS
 ------------------------------------------------------------------------------*/
@@ -49,3 +51,10 @@ typedef struct _proxy_config_t {
 } proxy_config_t;
 
 
+typedef struct _temp_control_config_t {
+    uint32_t default_set_point;
+
+    seL4_CPtr web_cap;
+    seL4_CPtr sensor_cap;
+    seL4_CPtr fan_cap;
+} temp_control_config_t;

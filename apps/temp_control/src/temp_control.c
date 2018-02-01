@@ -32,6 +32,9 @@
 #include <stdint.h>
 #include <sel4/sel4.h>
 
+#include <sos.h>
+#include <config.h>
+
 /*------------------------------------------------------------------------------
     DEFINITIONS & CONSTANTS
 ------------------------------------------------------------------------------*/
@@ -40,12 +43,15 @@
 #define CNODE_SLOT              (1)
 #define SYSCALL_EP_SLOT         (2)
 #define THREAD_2_SLOT           (3)
-#define PROXY_SEND_EP_SLOT      (4)
-#define PROXY_RECV_EP_SLOT      (5)
+
+#define THREAD_STACK_SIZE 512
 
 /*------------------------------------------------------------------------------
     VARIABLES
 ------------------------------------------------------------------------------*/
+static uint64_t thread_stack[THREAD_STACK_SIZE];
+
+static temp_control_config_t *config = (temp_control_config_t*)CONFIG_ADDRESS; 
 
 /*------------------------------------------------------------------------------
     PROTOTYPES
@@ -55,11 +61,27 @@
     PROCEEDURES
 ------------------------------------------------------------------------------*/
 
+void worker_thread(void) {
+    printf("TEMP CONTROL: Worker thread started.\n");
+
+    while(1);
+
+}
+
 int main(void) {
 
-    printf("TEMP CONTROL: Started.");
+    printf("TEMP CONTROL: Started.\n");
 
+    uintptr_t thread_stack_top = (uintptr_t)thread_stack + sizeof(thread_stack);
+
+    seL4_UserContext regs = {0};
+    regs.pc = (seL4_Word)worker_thread;
+    regs.sp = (seL4_Word)thread_stack_top;
+
+    seL4_TCB_WriteRegisters(THREAD_2_SLOT, seL4_True, 0, 2, &regs); //TODO not sure about this local_cap
+    seL4_Yield();
 
     while(1);
     return 0;
+
 }

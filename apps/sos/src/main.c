@@ -640,111 +640,6 @@ int main(void) {
     //network_init(badge_irq_ep(_sos_interrupt_ep_cap, IRQ_BADGE_NETWORK));
 
 
-#if defined(CONFIG_APP_LPING) && defined(CONFIG_APP_LPONG)
-    /* DO LOCAL BANDWIDTH TESTING*/
-    process_t ping;
-    process_t pong;
-    start_process("lping", _sos_ipc_ep_cap, &ping);
-    start_process("lpong", _sos_ipc_ep_cap, &pong);
-
-    seL4_CPtr shared_ep[2];
-    seL4_Word ep_addr[2];
-    ep_addr[0] = ut_alloc(seL4_EndpointBits);
-    ep_addr[1] = ut_alloc(seL4_EndpointBits);
-    conditional_panic(!ep_addr[0], "No memory for endpoint");
-    conditional_panic(!ep_addr[1], "No memory for endpoint");
-
-    cspace_ut_retype_addr(ep_addr[0],
-                          seL4_EndpointObject,
-                          seL4_EndpointBits,
-                          cur_cspace,
-                          &shared_ep[0]);
-    cspace_ut_retype_addr(ep_addr[1],
-                          seL4_EndpointObject,
-                          seL4_EndpointBits,
-                          cur_cspace,
-                          &shared_ep[1]);
- 
-    cspace_mint_cap(ping.croot,
-                    cur_cspace,
-                    shared_ep[0],
-                    seL4_AllRights, //TODO RTH: FIX
-                    seL4_CapData_Badge_new(0));
-    cspace_mint_cap(ping.croot,
-                    cur_cspace,
-                    shared_ep[1],
-                    seL4_AllRights, //TODO RTH: FIX
-                    seL4_CapData_Badge_new(1));
-
-    cspace_mint_cap(pong.croot,
-                    cur_cspace,
-                    shared_ep[0],
-                    seL4_AllRights, //TODO RTH: FIX
-                    seL4_CapData_Badge_new(0));
-    cspace_mint_cap(pong.croot,
-                    cur_cspace,
-                    shared_ep[1],
-                    seL4_AllRights, //TODO RTH: FIX
-                    seL4_CapData_Badge_new(1));
-
-
-#elif defined(CONFIG_APP_PING) && defined(CONFIG_APP_PONG)
-
-    /* DO REMOTE BANDWIDTH TESTING */
-
-    /* Start the user application */
-    process_t proxy;
-    start_process("proxy1", _sos_ipc_ep_cap, &proxy);
-
-    process_t p;
-    start_process(CONFIG_SOS_STARTUP_APP, _sos_ipc_ep_cap, &p);
-
-    /* Setup proxy to startup app EP */
-    seL4_CPtr proxy_ep[2];
-    seL4_Word ep_addr[2];
-
-    ep_addr[0] = ut_alloc(seL4_EndpointBits); 
-    ep_addr[1] = ut_alloc(seL4_EndpointBits);
-    conditional_panic(!ep_addr[0], "No memory for endpoint");
-    conditional_panic(!ep_addr[1], "No memory for endpoint");
-
-    cspace_ut_retype_addr(ep_addr[0],
-                          seL4_EndpointObject,
-                          seL4_EndpointBits,
-                          cur_cspace,
-                          &proxy_ep[0]);
-    cspace_ut_retype_addr(ep_addr[1],
-                          seL4_EndpointObject,
-                          seL4_EndpointBits,
-                          cur_cspace,
-                          &proxy_ep[1]);
-
-    cspace_mint_cap(p.croot,
-                    cur_cspace,
-                    proxy_ep[0],
-                    seL4_AllRights, //TODO RTH: FIX
-                    seL4_CapData_Badge_new(0));
-    cspace_mint_cap(p.croot,
-                    cur_cspace,
-                    proxy_ep[1],
-                    seL4_AllRights, //TODO RTH: FIX
-                    seL4_CapData_Badge_new(1));
-
-    cspace_mint_cap(proxy.croot,
-                    cur_cspace,
-                    proxy_ep[0],
-                    seL4_AllRights, //TODO RTH: FIX
-                    seL4_CapData_Badge_new(0));
-    cspace_mint_cap(proxy.croot,
-                    cur_cspace,
-                    proxy_ep[1],
-                    seL4_AllRights, //TODO RTH: FIX
-                    seL4_CapData_Badge_new(1));
-
-
-#endif
-
-
     //TODO don't put all these on the stack
     process_t web;
     process_t temp_control;
@@ -754,6 +649,8 @@ int main(void) {
 
     proxy_config_t sensor_config;
     proxy_config_t fan_config;
+
+    temp_control_config_t temp_control_config;
 
 
     char sensor_psk[] = "C480FD91B1B29293C1BD65D1E35B0E210B5B189BD77643C6B5B731B33FC4D2C1";
@@ -784,11 +681,9 @@ int main(void) {
     memcpy(sensor_config.clients[0].psk, sensor_psk, sizeof(sensor_psk)); 
     memcpy(sensor_config.clients[0].iv, sensor_iv, sizeof(sensor_iv));
 
-    seL4_CPtr temp_control_cap_delete1; //TODO make TC config
-
     connect_processes(&temp_control, 
                       seL4_AllRights, //TODO trim
-                      &temp_control_cap_delete1,
+                      &temp_control_config.sensor_cap,
                       &sensor,
                       seL4_AllRights,
                       &sensor_config.clients[0].ep_cap);
@@ -805,62 +700,30 @@ int main(void) {
     memcpy(fan_config.clients[0].psk, fan_psk, sizeof(fan_psk)); 
     memcpy(fan_config.clients[0].iv, fan_iv, sizeof(fan_iv));
 
-    seL4_CPtr temp_control_cap_delete2; //TODO make TC config
-
     connect_processes(&temp_control, 
                       seL4_AllRights, //TODO trim
-                      &temp_control_cap_delete2,
+                      &temp_control_config.fan_cap,
                       &fan,
                       seL4_AllRights,
                       &fan_config.clients[0].ep_cap);
      
     initialize_process_config(&fan, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&fan_config), sizeof(fan_config));
 
-
-
-    seL4_CPtr temp_control_cap_delete3; //TODO make TC config
     seL4_CPtr web_cap_delete;
 
     connect_processes(&temp_control,
                       seL4_AllRights, //TODO trim
-                      &temp_control_cap_delete3,
+                      &temp_control_config.web_cap,
                       &web,
                       seL4_AllRights,
                       &web_cap_delete);
 
 
-    //connect_processes(&temp_control, seL4_AllRights, 0, &web, seL4_AllRights, 0); //TODO trim rights
-   
+    initialize_process_config(&temp_control, (seL4_Word)PROCESS_CONFIG, (uint8_t *)&temp_control_config, sizeof(temp_control_config));
 
-//    seL4_CPtr web_send_cap, web_recv_cap; 
-//
-//    connect_processes(&web, 
-//                      seL4_AllRights,
-//                      &web_send_cap,
-//                      &web_proxy,
-//                      seL4_AllRights,
-//                      &web_proxy_config.send_ep_cap);
-//
-//    connect_processes(&web, 
-//                      seL4_AllRights,
-//                      &web_recv_cap,
-//                      &web_proxy,
-//                      seL4_AllRights,
-//                      &web_proxy_config.clients[0].ep_cap);
-//
-//    //TODO migrate some of this to Kconfig
-//    web_proxy_config.enable_encryption = 0;
-//    web_proxy_config.num_clients = 1;
-//    web_proxy_config.clients[0].tcb_cap = 3;
-//   
-//    initialize_process_config(&web_proxy, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&web_proxy_config), sizeof(web_proxy_config));
 
 
 #endif
-
-
-
-
 
 
     /* Wait on synchronous endpoint for IPC */
