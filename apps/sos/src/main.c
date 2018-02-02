@@ -20,6 +20,7 @@
 #include <elf/elf.h>
 #include <serial/serial.h>
 
+
 #include "network.h"
 #include "elf.h"
 
@@ -599,6 +600,27 @@ seL4_CPtr allocate_and_map_page(process_t *process, seL4_Word v_dest, seL4_Word 
     return mem_cap;
 }
 
+seL4_CPtr map_device_to_proc(process_t *process, seL4_Word paddr, seL4_Word vaddr) {
+    int err;
+    seL4_CPtr frame_cap;
+
+    err = cspace_ut_retype_addr(paddr, //TODO does the root task have identity mapping?
+                                seL4_ARM_SmallPageObject,
+                                seL4_PageBits,
+                                cur_cspace,
+                                &frame_cap);
+    conditional_panic(err, "Unable to retype device memory");
+
+    err = map_page(frame_cap,
+                   process->vroot,
+                   vaddr,
+                   seL4_AllRights,
+                   0);
+    conditional_panic(err, "Unable to map device");
+
+    return frame_cap;
+}
+
 
 void initialize_process_config(process_t *process, seL4_Word v_dest, uint8_t *buffer, seL4_Word buffer_len) {
     static uint8_t *local_v_dest = (uint8_t *)0x70000000; //TODO
@@ -623,7 +645,6 @@ void initialize_process_config(process_t *process, seL4_Word v_dest, uint8_t *bu
 
     memcpy(local_v_dest, buffer, buffer_len);
     local_v_dest += (1 << seL4_PageBits);
-
 }
 
 
@@ -631,6 +652,7 @@ void initialize_process_config(process_t *process, seL4_Word v_dest, uint8_t *bu
  * Main entry point - called by crt.
  */
 int main(void) {
+    int err;
 
     dprintf(0, "\nSOS Starting...\n");
 
@@ -651,12 +673,16 @@ int main(void) {
     proxy_config_t fan_config;
 
     temp_control_config_t temp_control_config;
-
+    alarm_config_t alarm_config;
 
     char sensor_psk[] = "C480FD91B1B29293C1BD65D1E35B0E210B5B189BD77643C6B5B731B33FC4D2C1";
     char fan_psk[] = "7D74FF4C3705DF5FCA68418BFCFBA32E9F246A6C9B85F2480F95B9D3BC32612E";
     char sensor_iv[] = "827C43085639350AB66A23B700C69B2A";
     char fan_iv[] = "BE0721CAC6FFBC2ED3698BC84068FE7F";
+
+
+
+    
 
 #if defined(CONFIG_APP_WEB) && \
     defined(CONFIG_APP_TEMP_CONTROL) && \
@@ -665,7 +691,7 @@ int main(void) {
 
     
     //TODO fix cap counting
-    //start_process("alarm", seL4_CapNull, &alarm, 0); // 1 local cap
+    start_process("alarm", _sos_ipc_ep_cap, &alarm, 0); // 1 local cap
     start_process("web", _sos_ipc_ep_cap, &web, 0); // 2 local caps
     start_process("temp_control", _sos_ipc_ep_cap, &temp_control, 1); 
     start_process("proxy", _sos_ipc_ep_cap, &fan, 1);
@@ -721,7 +747,39 @@ int main(void) {
 
     initialize_process_config(&temp_control, (seL4_Word)PROCESS_CONFIG, (uint8_t *)&temp_control_config, sizeof(temp_control_config));
 
+//    alarm_config.gpio_id = GPIOID_GPIO9;
+    alarm_config.gpio_bank1 = 0x80000000;
+    alarm_config.iomuxc = 0x80001000; 
 
+    //TODO cleanup map this page to the root task.
+//#define IMX6_IOMUXC_PADDR 0x020E0000
+//#define IMX6_IOMUXC_SIZE 0x1000
+//#define IMX6_GPIO1_PADDR  0x0209C000
+//
+//    gpio_sys_t gpio_sys;
+//    mux_sys_t mux_sys;
+//
+//    void *iomuxc = map_device((void *)IMX6_IOMUXC_PADDR, IMX6_IOMUXC_SIZE);
+//    int alarm_gpio_id = GPIOID_GPIO9;
+//
+//    err = imx6_mux_init(iomuxc, &mux_sys);
+//    conditional_panic(err, "Failed to initialize the mux.");
+//
+//    err = imx6_mux_enable_gpio(&mux_sys, alarm_gpio_id);
+//    conditional_panic(err, "Failed to enable the alarm gpio")
+
+
+    connect_processes(&temp_control,
+                      seL4_AllRights, //TODO trim
+                      &temp_control_config.alarm_cap,
+                      &alarm,
+                      seL4_AllRights,
+                      &alarm_config.tc_cap);
+
+    map_device_to_proc(&alarm, 0x020E0000, alarm_config.iomuxc);
+    map_device_to_proc(&alarm, 0x0209C000, alarm_config.gpio_bank1);
+
+    initialize_process_config(&alarm, (seL4_Word)PROCESS_CONFIG, (uint8_t *)&alarm_config, sizeof(alarm_config));
 
 #endif
 

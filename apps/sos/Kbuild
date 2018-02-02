@@ -14,6 +14,7 @@ apps-$(CONFIG_APP_SOS) += sos
 sos-components-$(CONFIG_APP_PROXY) += proxy
 sos-components-$(CONFIG_APP_WEB) += web
 sos-components-$(CONFIG_APP_TEMP_CONTROL) += temp_control
+sos-components-$(CONFIG_APP_ALARM) += alarm
 
 
 sos-components=$(addprefix $(STAGE_BASE)/bin/, $(sos-components-y))
