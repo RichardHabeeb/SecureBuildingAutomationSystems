@@ -46,12 +46,21 @@
 
 #define THREAD_STACK_SIZE 512
 
+enum {
+    UpdateSetPoint = 0,
+    GetCurrentTemp = 1,    
+};
+
 /*------------------------------------------------------------------------------
     VARIABLES
 ------------------------------------------------------------------------------*/
 static uint64_t thread_stack[THREAD_STACK_SIZE];
 
-static temp_control_config_t *config = (temp_control_config_t*)CONFIG_ADDRESS; 
+static temp_control_config_t *config = (temp_control_config_t*)CONFIG_ADDRESS;
+
+/* TODO potential concurrentcy bugs */
+static float setpoint;
+static float current_temp;
 
 /*------------------------------------------------------------------------------
     PROTOTYPES
@@ -62,15 +71,36 @@ static temp_control_config_t *config = (temp_control_config_t*)CONFIG_ADDRESS;
 ------------------------------------------------------------------------------*/
 
 void worker_thread(void) {
+    seL4_MessageInfo_t msg;
+    seL4_Word badge;
+
     printf("TEMP CONTROL: Worker thread started.\n");
 
-    while(1);
+    while(1) {
+        msg = seL4_Wait(config->web_cap, &badge);
 
+        switch(seL4_GetMR(0)) {
+            case UpdateSetPoint:
+                setpoint = seL4_GetMR(1);
+                seL4_SetMR(1, current_temp);
+                seL4_Reply(msg);
+                break;
+            case GetCurrentTemp:
+                seL4_SetMR(1, current_temp);
+                seL4_Reply(msg);
+                break;
+            default:
+                break;
+        }
+    }
 }
 
 int main(void) {
 
     printf("TEMP CONTROL: Started.\n");
+
+    setpoint = config->default_set_point;
+    current_temp = 0.0;
 
     uintptr_t thread_stack_top = (uintptr_t)thread_stack + sizeof(thread_stack);
 

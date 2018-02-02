@@ -30,7 +30,6 @@
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
-#define CONFIG_ADDRESS 0x70000000
 
 /* Cspace Layout */
 #define CNODE_SLOT              (1)
