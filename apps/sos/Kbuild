@@ -10,7 +10,6 @@
 
 apps-$(CONFIG_APP_SOS) += sos
 
-sos-components-$(CONFIG_APP_SOSH) += sosh
 
 sos-components-$(CONFIG_APP_PROXY) += proxy
 sos-components-$(CONFIG_APP_WEB) += web

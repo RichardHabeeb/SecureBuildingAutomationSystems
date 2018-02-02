@@ -1,4 +1,12 @@
 build
 stage
+images
+include
 
 *.swp
+
+*.d
+*.o
+*.ko
+*.obj
+*.elf
