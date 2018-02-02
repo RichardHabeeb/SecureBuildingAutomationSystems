@@ -47,9 +47,11 @@
 #define SYSCALL_EP_SLOT         (2)
 #define TC_EP_SLOT              (3)
 
+
 /*------------------------------------------------------------------------------
     VARIABLES
 ------------------------------------------------------------------------------*/
+struct BuildingData status;
 
 /*------------------------------------------------------------------------------
     PROTOTYPES
@@ -58,13 +60,33 @@
 /*------------------------------------------------------------------------------
     PROCEEDURES
 ------------------------------------------------------------------------------*/
+static capn_text chars_to_text(const char *chars) {
+    return (capn_text) {
+        .len = (int) strlen(chars),
+        .str = chars,
+        .seg = NULL,
+    };
+}
 
 int main(void) {
     static uint8_t recieved_data[4096];
     int len;
+    int err;
     seL4_Word ip;
     seL4_MessageInfo_t msg;
 
+    struct capn c;
+    capn_init_malloc(&c);
+    capn_ptr cr = capn_root(&c);
+    struct capn_segment *cs = cr.seg;
+    BuildingData_ptr status_p = new_BuildingData(cs);
+    
+    status.currentTemp = 0.0;
+    status.cooling = 0;
+    status.heating = 0;
+    status.alarm = 0;
+    status.platform = chars_to_text("seL4");    
+    
     printf("WEB: Started.\n");
 
     while(1) {
@@ -77,7 +99,14 @@ int main(void) {
 
         msg = seL4_Call(TC_EP_SLOT, msg);
 
-        printf("WEB: %d\n", seL4_GetMR(1));
+        status.currentTemp = seL4_GetMR(1);
+
+        printf("WEB: %d\n", status.currentTemp);
+
+        write_BuildingData(&status, status_p);
+        err = capn_setp(capn_root(&c), 0, status_p.p);
+        //conditional_panic(0 != err, "Protocol error.");
+        len = capn_write_mem(&c, recieved_data, sizeof(recieved_data), 0); //TODO size and packed
 
         send_packet(ip, 6666, recieved_data, len);
 

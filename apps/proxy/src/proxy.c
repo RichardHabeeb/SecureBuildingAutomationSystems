@@ -164,24 +164,6 @@ int main(void) {
         seL4_Yield();
     }
 
-//    while(1) {
-//        seL4_Word badge;
-//        seL4_MessageInfo_t message;
-//        unsigned int len;
-//
-//        message = seL4_Wait(config->send_ep_cap, &badge);
-//        len = MIN(sizeof(recieved_data), seL4_MessageInfo_get_length(message));
-//
-//        if(config->enable_encryption) {
-//            len = blockEncrypt(&cipher_e, &key_e, seL4_GetIPCBuffer()->msg, len*8, recieved_data)/8;
-//        } else {
-//            memcpy(recieved_data, seL4_GetIPCBuffer()->msg, len);
-//        }
-//
-//        //send_packet(recieved_data, len);
-//        
-//    }
-
 
     while(1) seL4_Yield();
 

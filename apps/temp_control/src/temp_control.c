@@ -96,6 +96,8 @@ void worker_thread(void) {
 }
 
 int main(void) {
+    seL4_MessageInfo_t msg;
+    seL4_Word badge;
 
     printf("TEMP CONTROL: Started.\n");
 
@@ -111,7 +113,21 @@ int main(void) {
     seL4_TCB_WriteRegisters(THREAD_2_SLOT, seL4_True, 0, 2, &regs); //TODO not sure about this local_cap
     seL4_Yield();
 
-    while(1);
+    while(1) {
+        //TODO hide system calls and plumbing code
+
+        msg = seL4_MessageInfo_new(0, 0, 0, 1);
+        seL4_SetMR(0, 1); /* ReceivePacket */
+
+        /* Listen for new packet */
+        msg = seL4_Call(config->sensor_cap, msg);
+
+        //TODO do control stuff with sensor data
+
+        seL4_SetMR(0, 0); /* SendPacket */
+        msg = seL4_Call(config->fan_cap, msg);
+
+    }
     return 0;
 
 }
