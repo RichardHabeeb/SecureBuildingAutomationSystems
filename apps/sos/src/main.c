@@ -659,7 +659,7 @@ int main(void) {
     _sos_init(&_sos_ipc_ep_cap, &_sos_interrupt_ep_cap);
 
     /* Initialise the network hardware */
-    //network_init(badge_irq_ep(_sos_interrupt_ep_cap, IRQ_BADGE_NETWORK));
+    network_init(badge_irq_ep(_sos_interrupt_ep_cap, IRQ_BADGE_NETWORK));
 
 
     //TODO don't put all these on the stack
@@ -687,12 +687,13 @@ int main(void) {
 #if defined(CONFIG_APP_WEB) && \
     defined(CONFIG_APP_TEMP_CONTROL) && \
     defined(CONFIG_APP_PROXY_SENSOR) && \
-    defined(CONFIG_APP_PROXY_FAN)
+    defined(CONFIG_APP_PROXY_FAN) && \
+    defined(CONFIG_APP_ALARM)
 
     
     //TODO fix cap counting
-    start_process("alarm", _sos_ipc_ep_cap, &alarm, 0); // 1 local cap
-    start_process("web", _sos_ipc_ep_cap, &web, 0); // 2 local caps
+    start_process("alarm", _sos_ipc_ep_cap, &alarm, 1); 
+    start_process("web", _sos_ipc_ep_cap, &web, 0); 
     start_process("temp_control", _sos_ipc_ep_cap, &temp_control, 1); 
     start_process("proxy", _sos_ipc_ep_cap, &fan, 1);
     start_process("proxy", _sos_ipc_ep_cap, &sensor, 1);
@@ -747,27 +748,8 @@ int main(void) {
 
     initialize_process_config(&temp_control, (seL4_Word)PROCESS_CONFIG, (uint8_t *)&temp_control_config, sizeof(temp_control_config));
 
-//    alarm_config.gpio_id = GPIOID_GPIO9;
     alarm_config.gpio_bank1 = 0x80000000;
-    alarm_config.iomuxc = 0x80001000; 
-
-    //TODO cleanup map this page to the root task.
-//#define IMX6_IOMUXC_PADDR 0x020E0000
-//#define IMX6_IOMUXC_SIZE 0x1000
-//#define IMX6_GPIO1_PADDR  0x0209C000
-//
-//    gpio_sys_t gpio_sys;
-//    mux_sys_t mux_sys;
-//
-//    void *iomuxc = map_device((void *)IMX6_IOMUXC_PADDR, IMX6_IOMUXC_SIZE);
-//    int alarm_gpio_id = GPIOID_GPIO9;
-//
-//    err = imx6_mux_init(iomuxc, &mux_sys);
-//    conditional_panic(err, "Failed to initialize the mux.");
-//
-//    err = imx6_mux_enable_gpio(&mux_sys, alarm_gpio_id);
-//    conditional_panic(err, "Failed to enable the alarm gpio")
-
+    alarm_config.iomuxc = 0x80001000; //TODO figure out how to manage mux with multiple drivers 
 
     connect_processes(&temp_control,
                       seL4_AllRights, //TODO trim

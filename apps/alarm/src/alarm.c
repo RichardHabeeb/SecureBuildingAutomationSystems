@@ -46,8 +46,11 @@
 /* Cspace Layout */
 #define CNODE_SLOT              (1)
 #define SYSCALL_EP_SLOT         (2)
+#define THREAD_2_SLOT           (3)
 
+#define THREAD_STACK_SIZE 512
 
+//TODO
 //#define IMX6_IOMUXC_PADDR 0x020E0000
 #define IMX6_IOMUXC_SIZE 0x1000
 //#define IMX6_GPIO1_PADDR  0x0209C000
@@ -56,8 +59,14 @@
 /*------------------------------------------------------------------------------
     VARIABLES
 ------------------------------------------------------------------------------*/
-
 static alarm_config_t *config = (alarm_config_t*)CONFIG_ADDRESS;
+
+static uint64_t thread_stack[THREAD_STACK_SIZE];
+static int alarm_enabled;
+
+gpio_sys_t gpio_sys;
+mux_sys_t mux_sys;
+gpio_t gpio_pin;
 
 /*------------------------------------------------------------------------------
     PROTOTYPES
@@ -66,28 +75,66 @@ static alarm_config_t *config = (alarm_config_t*)CONFIG_ADDRESS;
 /*------------------------------------------------------------------------------
     PROCEEDURES
 ------------------------------------------------------------------------------*/
+void worker_thread(void) {    
+    printf("ALARM: Worker thread started.\n");    
+    while(1) {
+        volatile int i, j, k;
+        char led_setting;
+       
+        led_setting = (alarm_enabled) ? 1: 0;
+        gpio_sys.write(&gpio_pin, &led_setting, 1);
 
+        for(i = 0; i < 10000; i++) {
+            for(j = 0; j < 1000; j++) k++;
+        }
+
+        led_setting = 0;
+        gpio_sys.write(&gpio_pin, &led_setting, 1);
+        
+        for(i = 0; i < 10000; i++) {
+            for(j =0; j < 1000; j++) k++;
+        }
+    }
+}
 
 int main(void) {
     int err;
+    seL4_MessageInfo_t msg;
+    seL4_Word badge;
 
     printf("ALARM: Started.\n");
 
-    gpio_sys_t gpio_sys;
-    mux_sys_t mux_sys;
-
+    /* Initialize GPIO and MUX */
     err = imx6_mux_init(config->iomuxc, &mux_sys);
-    //conditional_panic(err, "Failed to initialize the mux.");
     if(err) printf("ALARM: ERROR, Failed to initialize the mux.\n");
-
-    //err = imx6_mux_enable_gpio(&mux_sys, GPIOID_GPIO9);
-    //if(err) printf("ALARM: ERROR, Failed to enable the alarm gpio.\n");
 
     err = imx6_gpio_sys_init(config->gpio_bank1, NULL, NULL,
                              NULL, NULL, NULL, NULL,
                              &mux_sys, &gpio_sys);
-    if(err) printf("ALARM: ERROR, failed to initialize the gpio.\n");
+    if(err) printf("ALARM: ERROR, failed to initialize the gpiosys struct.\n");
 
-    while(1) {}
+    err = gpio_sys.init(&gpio_sys, GPIOID_GPIO9, GPIO_DIR_OUT, &gpio_pin);
+    if(err) printf("ALARM: ERROR, failed to initialize the gpio pin.\n");
+
+    /* Configure default alarm setting */
+    alarm_enabled = 1;
+
+
+    /* Initialize worker thread */
+    uintptr_t thread_stack_top = (uintptr_t)thread_stack + sizeof(thread_stack);
+    seL4_UserContext regs = {0};
+    regs.pc = (seL4_Word)worker_thread;
+    regs.sp = (seL4_Word)thread_stack_top;
+
+    seL4_TCB_WriteRegisters(THREAD_2_SLOT, seL4_True, 0, 2, &regs);
+    seL4_Yield();
+
+    while(1) {
+        msg = seL4_Wait(config->tc_cap, &badge);
+
+        alarm_enabled = seL4_GetMR(0);
+
+        seL4_Reply(msg);
+    }
 
 }

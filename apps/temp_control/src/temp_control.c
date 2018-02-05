@@ -123,6 +123,10 @@ int main(void) {
         msg = seL4_Call(config->sensor_cap, msg);
 
         //TODO do control stuff with sensor data
+        
+        //if(danger)
+        sel4_SetMR(0, 1);
+        msg = seL4_Call(config->alarm_cap, msg);
 
         seL4_SetMR(0, 0); /* SendPacket */
         msg = seL4_Call(config->fan_cap, msg);
