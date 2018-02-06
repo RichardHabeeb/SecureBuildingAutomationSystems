@@ -699,7 +699,7 @@ int main(void) {
     start_process("proxy", _sos_ipc_ep_cap, &sensor, 1);
 
 
-    /* Setup sensor proxy */
+    /* Initialize Sensor proxy */
     sensor_config.enable_encryption = 1;
     sensor_config.num_clients = 1;
     sensor_config.clients[0].tcb_cap = 3;
@@ -713,12 +713,9 @@ int main(void) {
                       &temp_control_config.sensor_cap,
                       &sensor,
                       seL4_AllRights,
-                      &sensor_config.clients[0].ep_cap);
-     
-    initialize_process_config(&sensor, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&sensor_config), sizeof(sensor_config));
+                      &sensor_config.clients[0].ep_cap);  
 
-
-    /* Setup fan proxy */
+    /* Initialize Fan proxy */
     fan_config.enable_encryption = 1;
     fan_config.num_clients = 1;
     fan_config.clients[0].tcb_cap = 3;
@@ -734,8 +731,8 @@ int main(void) {
                       seL4_AllRights,
                       &fan_config.clients[0].ep_cap);
      
-    initialize_process_config(&fan, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&fan_config), sizeof(fan_config));
 
+    /* Initialize Web Interface */
     seL4_CPtr web_cap_delete;
 
     connect_processes(&temp_control,
@@ -746,8 +743,7 @@ int main(void) {
                       &web_cap_delete);
 
 
-    initialize_process_config(&temp_control, (seL4_Word)PROCESS_CONFIG, (uint8_t *)&temp_control_config, sizeof(temp_control_config));
-
+    /* Initialize Alarm */
     alarm_config.gpio_bank1 = 0x80000000;
     alarm_config.iomuxc = 0x80001000; //TODO figure out how to manage mux with multiple drivers 
 
@@ -761,8 +757,11 @@ int main(void) {
     map_device_to_proc(&alarm, 0x020E0000, alarm_config.iomuxc);
     map_device_to_proc(&alarm, 0x0209C000, alarm_config.gpio_bank1);
 
+    /* Write all configs */
     initialize_process_config(&alarm, (seL4_Word)PROCESS_CONFIG, (uint8_t *)&alarm_config, sizeof(alarm_config));
-
+    initialize_process_config(&temp_control, (seL4_Word)PROCESS_CONFIG, (uint8_t *)&temp_control_config, sizeof(temp_control_config));
+    initialize_process_config(&fan, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&fan_config), sizeof(fan_config));
+    initialize_process_config(&sensor, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&sensor_config), sizeof(sensor_config));
 #endif
 
 

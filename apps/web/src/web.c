@@ -77,14 +77,14 @@ int main(void) {
     seL4_MessageInfo_t msg;
 
 //    struct capn c;
-//    struct capn rc;
+    struct capn rc;
 //    capn_init_malloc(&c);
-//    err = capn_init_mem(&rc, recieved_data, sizeof(recieved_data), 0 /* packed */);
 //    capn_ptr cr = capn_root(&c);
 //    struct capn_segment *cs = cr.seg;
 //    BuildingData_ptr status_p = new_BuildingData(cs);
-//    BuildingConfig_ptr config_p;
+    BuildingConfig_ptr config_p;
     
+
     status.currentTemp = 0.0;
     status.cooling = 0;
     status.heating = 0;
@@ -96,10 +96,9 @@ int main(void) {
     while(1) {
         len = recv_packet(6666, recieved_data, sizeof(recieved_data)/sizeof(recieved_data[0]), &ip);
 
-
-        // do some stuff with capn proto
-        //config_p.p = capn_getp(capn_root(&rc), 0 /* off */, 1 /* resolve */);
-        //read_BuildingConfig(&config, config_p);
+        err = capn_init_mem(&rc, recieved_data, sizeof(recieved_data), 0 /* packed */);
+        config_p.p = capn_getp(capn_root(&rc), 0 /* off */, 1 /* resolve */);
+        read_BuildingConfig(&config, config_p);
 
         msg = seL4_MessageInfo_new(0, 0, 0, 2);
 

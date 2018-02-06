@@ -117,7 +117,7 @@ int main(void) {
     if(err) printf("ALARM: ERROR, failed to initialize the gpio pin.\n");
 
     /* Configure default alarm setting */
-    alarm_enabled = 1;
+    alarm_enabled = 0;
 
 
     /* Initialize worker thread */

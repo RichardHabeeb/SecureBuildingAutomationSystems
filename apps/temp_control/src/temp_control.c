@@ -26,6 +26,7 @@
     INCLUDES
 ------------------------------------------------------------------------------*/
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,7 +47,7 @@
 
 #define THREAD_STACK_SIZE 512
 
-enum {
+enum { //TODO put into library
     UpdateSetPoint = 0,
     GetCurrentTemp = 1,    
 };
@@ -58,9 +59,12 @@ static uint64_t thread_stack[THREAD_STACK_SIZE];
 
 static temp_control_config_t *config = (temp_control_config_t*)CONFIG_ADDRESS;
 
-/* TODO potential concurrentcy bugs */
 static float setpoint;
 static float current_temp;
+static float temp_safety_zone;
+
+static int fan_status;
+static int alarm_status;
 
 /*------------------------------------------------------------------------------
     PROTOTYPES
@@ -69,6 +73,48 @@ static float current_temp;
 /*------------------------------------------------------------------------------
     PROCEEDURES
 ------------------------------------------------------------------------------*/
+
+/* TODO: CAREFUL this can be called by both threads! */
+void control_update(void) {
+    seL4_MessageInfo_t msg;
+    float temp_error = fabs(current_temp - setpoint);
+    
+    printf("TEMP CONTROL: Doing control update.\n\tCurrent Temp: %4.2f\n\tSetpoint: %4.2f (error: %4.2f).\n",
+            current_temp,
+            setpoint,
+            temp_error);
+
+    /* Check if temp is safe, if not trigger alarm. */
+    if(!alarm_status && temp_error > temp_safety_zone) {
+        printf("TEMP CONTROL: !!!!!!! ACTIVATING ALARM !!!!!!!\n");
+        alarm_status = 1;
+        seL4_SetMR(0, 1);
+        msg = seL4_Call(config->alarm_cap, msg);
+    } else if(alarm_status && temp_error < temp_safety_zone) {
+        printf("TEMP CONTROL: !!!!!!! DEACTIVATING ALARM !!!!!!!\n");
+        alarm_status = 0;
+        seL4_SetMR(0, 0);
+        msg = seL4_Call(config->alarm_cap, msg);
+    }
+
+    if(!fan_status && temp_error > 0) {
+        fan_status = 1;
+        printf("TEMP CONTROL: Turning on fan. Turning off heater.\n");
+        seL4_SetMR(0, 0); /*Outgoing to proxy */
+        seL4_SetMR(1, 1); /* Turn on fan */
+        seL4_SetMR(2, 0); /* Turn off heater */
+        msg = seL4_Call(config->fan_cap, msg);
+    } else if(fan_status && temp_error < 0) {
+        fan_status = 0;
+        printf("TEMP CONTROL: Turning off fan. Turning on heater.\n");
+        seL4_SetMR(0, 0); /* Outgoing to proxy */
+        seL4_SetMR(1, 0); /* Turn off fan */
+        seL4_SetMR(2, 1); /* Turn on heater */
+        msg = seL4_Call(config->fan_cap, msg);
+    }
+
+}
+
 
 void worker_thread(void) {
     seL4_MessageInfo_t msg;
@@ -84,9 +130,14 @@ void worker_thread(void) {
                 setpoint = seL4_GetMR(1);
                 seL4_SetMR(1, current_temp);
                 seL4_Reply(msg);
+
+                /* Update the system with the new setpoint */
+                control_update();
                 break;
             case GetCurrentTemp:
                 seL4_SetMR(1, current_temp);
+                seL4_SetMR(2, fan_status);
+                seL4_SetMR(3, !fan_status); /* Web assumes fan and heater are controller independently. */
                 seL4_Reply(msg);
                 break;
             default:
@@ -103,7 +154,14 @@ int main(void) {
 
     setpoint = config->default_set_point;
     current_temp = 0.0;
+    setpoint = 1.0;
+    temp_safety_zone = 0.5;
+    fan_status = 0;
+    alarm_status = 0;
 
+    control_update();
+
+    /* Setup worker thread */
     uintptr_t thread_stack_top = (uintptr_t)thread_stack + sizeof(thread_stack);
 
     seL4_UserContext regs = {0};
@@ -112,6 +170,7 @@ int main(void) {
 
     seL4_TCB_WriteRegisters(THREAD_2_SLOT, seL4_True, 0, 2, &regs); //TODO not sure about this local_cap
     seL4_Yield();
+
 
     while(1) {
         //TODO hide system calls and plumbing code
@@ -122,15 +181,10 @@ int main(void) {
         /* Listen for new packet */
         msg = seL4_Call(config->sensor_cap, msg);
 
-        //TODO do control stuff with sensor data
-        
-        //if(danger)
-        sel4_SetMR(0, 1);
-        msg = seL4_Call(config->alarm_cap, msg);
+        /* Update the current_temp */
+        current_temp = seL4_GetMR(0);
 
-        seL4_SetMR(0, 0); /* SendPacket */
-        msg = seL4_Call(config->fan_cap, msg);
-
+        control_update();
     }
     return 0;
 

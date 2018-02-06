@@ -4,6 +4,7 @@ images
 include
 
 *.swp
+*.swo
 
 *.d
 *.o
