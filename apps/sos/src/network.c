@@ -213,7 +213,7 @@ network_init(seL4_CPtr interrupt_ep) {
      * request before sending another. On the other hand, priming the
      * table is cheap and can save a lot of heart ache
      */
-    //network_prime_arp(&gw); //RTH
+    network_prime_arp(&gw); //RTH
     udp_syscall_init();
 
     /* initialise and mount NFS */

@@ -87,11 +87,13 @@ void control_update(void) {
     /* Check if temp is safe, if not trigger alarm. */
     if(!alarm_status && temp_error > temp_safety_zone) {
         printf("TEMP CONTROL: !!!!!!! ACTIVATING ALARM !!!!!!!\n");
+        msg = seL4_MessageInfo_new(0, 0, 0, 1);
         alarm_status = 1;
         seL4_SetMR(0, 1);
         msg = seL4_Call(config->alarm_cap, msg);
     } else if(alarm_status && temp_error < temp_safety_zone) {
         printf("TEMP CONTROL: !!!!!!! DEACTIVATING ALARM !!!!!!!\n");
+        msg = seL4_MessageInfo_new(0, 0, 0, 1);
         alarm_status = 0;
         seL4_SetMR(0, 0);
         msg = seL4_Call(config->alarm_cap, msg);
@@ -117,6 +119,7 @@ void control_update(void) {
 
 
 void worker_thread(void) {
+    seL4_Word raw_setpoint;
     seL4_MessageInfo_t msg;
     seL4_Word badge;
 
@@ -127,7 +130,8 @@ void worker_thread(void) {
 
         switch(seL4_GetMR(0)) {
             case UpdateSetPoint:
-                setpoint = seL4_GetMR(1);
+                raw_setpoint = seL4_GetMR(1);
+                setpoint = *(float *)&raw_setpoint;
                 seL4_SetMR(1, current_temp);
                 seL4_Reply(msg);
 

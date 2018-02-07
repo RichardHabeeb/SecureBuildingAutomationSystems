@@ -1,0 +1,9 @@
+namespace WebProtocol;
+
+table BuildingConfig {
+	desiredTemp:float;
+	safetyRange:float;
+}
+
+
+root_type BuildingConfig;

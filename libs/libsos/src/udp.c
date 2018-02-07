@@ -58,12 +58,12 @@ unsigned int decode_ip(char *ip) {
 
 
 void send_packet(seL4_Word ip, seL4_Word port, uint8_t *data, uint32_t len) {
-    seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 0, 3+len);
+    seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 0, 3+len); //TODO FIX!@@@@@@@
     seL4_SetTag(tag);
     seL4_SetMR(0, 1);
     seL4_SetMR(1, ip);
     seL4_SetMR(2, port);
-    memcpy(seL4_GetIPCBuffer()->msg + 3, data, len);
+    memcpy(seL4_GetIPCBuffer()->msg + 3*sizeof(seL4_Word), data, len);
 
     seL4_Call(SYSCALL_EP_SLOT, tag);
 }
@@ -79,11 +79,11 @@ uint32_t recv_packet(seL4_Word port, uint8_t *data, uint32_t max_len, seL4_Word 
     seL4_SetMR(1, port);
 
     tag = seL4_Call(SYSCALL_EP_SLOT, tag);
-    len = MIN(max_len, seL4_MessageInfo_get_length(tag));
+    len = MIN(max_len, seL4_MessageInfo_get_length(tag)*sizeof(seL4_Word));
 
     *ip = seL4_GetMR(0);
     //port = seL4_GetMR(1);
-    memcpy(data, seL4_GetIPCBuffer()->msg + 2, len);
+    memcpy(data, seL4_GetIPCBuffer()->msg + 2, len - 2*sizeof(seL4_Word)); /* Forward ip and port. */
     
-    return len;
+    return len - 2*sizeof(seL4_Word);
 }

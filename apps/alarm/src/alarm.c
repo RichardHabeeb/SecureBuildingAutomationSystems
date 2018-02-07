@@ -81,7 +81,7 @@ void worker_thread(void) {
         volatile int i, j, k;
         char led_setting;
        
-        led_setting = (alarm_enabled) ? 1: 0;
+        led_setting = alarm_enabled;
         gpio_sys.write(&gpio_pin, &led_setting, 1);
 
         for(i = 0; i < 10000; i++) {
@@ -133,6 +133,7 @@ int main(void) {
         msg = seL4_Wait(config->tc_cap, &badge);
 
         alarm_enabled = seL4_GetMR(0);
+        printf("ALARM: enabled=%i\n", alarm_enabled);
 
         seL4_Reply(msg);
     }

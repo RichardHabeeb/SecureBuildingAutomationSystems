@@ -349,7 +349,7 @@ seL4_CPtr create_worker_thread(process_t *proc, seL4_CPtr user_syscall_cap, seL4
 
 void start_process(char* app_name, seL4_CPtr syscall_ep, process_t *proc, uint32_t num_extra_threads) {
     int err;
-
+    uint32_t i;
     seL4_Word stack_addr;
     seL4_CPtr stack_cap;
     seL4_CPtr user_ep_cap;
@@ -432,22 +432,23 @@ void start_process(char* app_name, seL4_CPtr syscall_ep, process_t *proc, uint32
     err = elf_load(proc->vroot, elf_base);
     conditional_panic(err, "Failed to load elf image");
 
-
-    /* Create a stack frame */
-    stack_addr = ut_alloc(seL4_PageBits);
-    conditional_panic(!stack_addr, "No memory for stack");
-    err =  cspace_ut_retype_addr(stack_addr,
-                                 seL4_ARM_SmallPageObject,
-                                 seL4_PageBits,
-                                 cur_cspace,
-                                 &stack_cap);
-    conditional_panic(err, "Unable to allocate page for stack");
-
-    /* Map in the stack frame for the user app */
-    err = map_page(stack_cap, proc->vroot,
-                   PROCESS_STACK_TOP - (1 << seL4_PageBits),
-                   seL4_AllRights, seL4_ARM_Default_VMAttributes);
-    conditional_panic(err, "Unable to map stack IPC buffer for user app");
+    for(i = 0; i < 16 /* num pages for stack */; i++) { 
+        /* Create a stack frame */
+        stack_addr = ut_alloc(seL4_PageBits);
+        conditional_panic(!stack_addr, "No memory for stack");
+        err =  cspace_ut_retype_addr(stack_addr,
+                                     seL4_ARM_SmallPageObject,
+                                     seL4_PageBits,
+                                     cur_cspace,
+                                     &stack_cap);
+        conditional_panic(err, "Unable to allocate page for stack");
+    
+        /* Map in the stack frame for the user app */
+        err = map_page(stack_cap, proc->vroot,
+                       PROCESS_STACK_TOP - ((i+1) << seL4_PageBits),
+                       seL4_AllRights, seL4_ARM_Default_VMAttributes);
+        conditional_panic(err, "Unable to map stack IPC buffer for user app");
+    }
 
     /* Map in the IPC buffer for the thread */
     err = map_page(proc->ipc_buffer_cap, proc->vroot,
@@ -456,7 +457,7 @@ void start_process(char* app_name, seL4_CPtr syscall_ep, process_t *proc, uint32
     conditional_panic(err, "Unable to map IPC buffer for user app");
 
 
-    for(uint32_t i = 1; i <= num_extra_threads; i++) {
+    for(i = 1; i <= num_extra_threads; i++) {
         create_worker_thread(proc, syscall_ep, PROCESS_IPC_BUFFER + i * (1 << seL4_PageBits));
     }
 
