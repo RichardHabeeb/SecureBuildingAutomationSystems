@@ -40,7 +40,7 @@ void udp_send_syscall(struct ip_addr ipaddr, int port, char * data, unsigned int
         return;
     }
 
-    //printf("udp_send_syscall: ip:%i, port:%i, data: %s, %i \n", ipaddr.addr, port, data, len);
+    printf("udp_send_syscall: ip:%i, port:%i, %i bytes \n", ipaddr.addr, port, data, len);
     err = udp_connect(pcb, &ipaddr, port);
 
     switch(err) {
@@ -91,7 +91,7 @@ void insert(int port, seL4_CPtr reply_cap)
     entry* current;
 
     h = hash((unsigned int) port) % HASH_TABLE_SIZE;
-    //printf("Inserting hash: %i\n", h);
+    printf("Inserting hash: %i\n", h);
 
     if(table[h] == NULL)
     {
@@ -213,7 +213,7 @@ void udp_recv_syscall(int port, seL4_CPtr reply_cap)
         return;
     }
 
-    //printf("udp_recv_syscall: port=%i cap=%i\n", port, reply_cap);
+    printf("udp_recv_syscall: port=%i cap=%i\n", port, reply_cap);
 
     insert(port, reply_cap);
     udp_recv(pcb, my_recv, NULL);

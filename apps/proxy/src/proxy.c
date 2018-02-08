@@ -77,7 +77,7 @@ void worker_thread(void) {
     port = config->clients[id].port;
     ip_address = config->clients[id].ip;
 
-    printf("PROXY: Thread %d Started.\n", id);
+    printf("PROXY: Thread %d Started.\n", id, port);
 
     while(1) {
         /* wait for request */
@@ -111,10 +111,8 @@ void worker_thread(void) {
                 seL4_Reply(tag);
                 break;
             case RecievePacket:
-                /* extract port to listen on, TODO:  */
-                port = seL4_GetMR(1);
-        
                 len = recv_packet(port, recieved_data, sizeof(recieved_data), &remote_ip_address);
+
                 printf("PROXY: recieved packet, len=%i\n", len);
         
                 if(config->enable_encryption) {

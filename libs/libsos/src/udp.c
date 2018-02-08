@@ -59,7 +59,7 @@ unsigned int decode_ip(char *ip) {
 
 void send_packet(seL4_Word ip, seL4_Word port, uint8_t *data, uint32_t len) {
     uint32_t len_words = len / sizeof(seL4_Word) + (((len % sizeof(seL4_Word)) == 0) ? 0 : 1);
-    //printf("send_packet: ip:%i, port:%i, (%i bytes, %i words) \n", ip, port, len, len_words);
+    //printf("???: len_words=%d\n", len_words);
     seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 0, 3 + len_words);
     seL4_SetMR(0, 1);
     seL4_SetMR(1, ip);
