@@ -101,11 +101,11 @@ int main(void) {
 
         msg = seL4_Call(config->tc_cap, msg);
 
-        fan_enabled = seL4_GetMR(1);
+        fan_enabled = seL4_GetMR(0);
         gpio_sys.write(&gpio_pin, &fan_enabled, 1);
         printf("FAN: enabled=%i\n", fan_enabled);
 
-        seL4_Reply(msg);
+        /* Should the fan reply? */
     }
 
 }

@@ -89,9 +89,9 @@ void worker_thread(void) {
             case SendPacket:
                 len = MIN(sizeof(recieved_data), (seL4_MessageInfo_get_length(tag) - 1)*sizeof(seL4_Word));
 
-                printf("PROXY: sending packet, len=%i\n", len);
+                //printf("PROXY: sending packet, len=%i\n", len);
         
-                if(config->enable_encryption) {
+                if(config->enable_encryption) {//TODO pack length
                     len = blockEncrypt(
                             &cipher_e[id],
                             &key_e[id],
@@ -113,7 +113,7 @@ void worker_thread(void) {
             case RecievePacket:
                 len = recv_packet(port, recieved_data, sizeof(recieved_data), &remote_ip_address);
 
-                printf("PROXY: recieved packet, len=%i\n", len);
+                //printf("PROXY: recieved packet, len=%i\n", len);
         
                 if(config->enable_encryption) {
                     len = blockDecrypt(
