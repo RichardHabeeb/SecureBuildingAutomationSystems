@@ -28,27 +28,39 @@ menuconfig APP_SOS
     help
         Simple Operating System (aka AOS implementation)
 
+
+
+config SOS_DHCP
+    bool "DHCP (not working yet)"
+    depends on APP_SOS
+    default n
+
 config SOS_NETMASK
     string "Network mask"
-    depends on APP_SOS
+    depends on APP_SOS && !SOS_DHCP
     default "225.225.225.0"
 
 config SOS_IP
     string "IP address"
-    depends on APP_SOS
-    default "192.168.168.2"
+    depends on APP_SOS && !SOS_DHCP
+    default "192.168.0.200"
 
 config SOS_GATEWAY
     string "Gateway IP address"
+    depends on APP_SOS && !SOS_DHCP
+    default "192.168.0.1"
+
+config SOS_REMOTE
+    string "Remote controller IP address"
     depends on APP_SOS
-    default "192.168.168.1"
+    default "192.168.0.201"
 
 config SOS_NFS_DIR
-    string "NFS directory"
+    string "NFS directory (depricated)"
     depends on APP_SOS
     default "/var/tftpboot/USER"
 
 config SOS_STARTUP_APP
-    string "Startup application name"
+    string "Startup application name (depricated)"
     depends on APP_SOS
     default "tty_test"

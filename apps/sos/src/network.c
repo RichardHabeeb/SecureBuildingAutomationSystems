@@ -143,7 +143,7 @@ network_prime_arp(struct ip_addr *gw){
         /* Wait for the response */
         sos_usleep(ARP_PRIME_RETRY_DELAY_MS * 1000);
         if(etharp_find_addr(lwip_iface->netif, gw, &eth, &ip) == -1){
-            timeout += ARP_PRIME_RETRY_DELAY_MS;
+            timeout -= ARP_PRIME_RETRY_DELAY_MS;
         }else{
             return;
         }
@@ -152,7 +152,7 @@ network_prime_arp(struct ip_addr *gw){
 
 void
 network_init(seL4_CPtr interrupt_ep) {
-    struct ip_addr netmask, ipaddr, gw;
+    struct ip_addr netmask, ipaddr, gw, remote;
     int err;
     int i;
 
@@ -183,10 +183,12 @@ network_init(seL4_CPtr interrupt_ep) {
     err |= !ipaddr_aton(CONFIG_SOS_GATEWAY,      &gw);
     err |= !ipaddr_aton(CONFIG_SOS_IP     ,  &ipaddr);
     err |= !ipaddr_aton(CONFIG_SOS_NETMASK, &netmask);
+    err |= !ipaddr_aton(CONFIG_SOS_REMOTE ,  &remote);
     conditional_panic(err, "Failed to parse IP address configuration");
     printf("  Local IP Address: %s\n", ipaddr_ntoa( &ipaddr));
     printf("Gateway IP Address: %s\n", ipaddr_ntoa(     &gw));
     printf("      Network Mask: %s\n", ipaddr_ntoa(&netmask));
+    printf(" Remote IP Address: %s\n", ipaddr_ntoa(&remote));
     printf("\n");
 
     /* low level initialisation */
@@ -213,8 +215,10 @@ network_init(seL4_CPtr interrupt_ep) {
      * request before sending another. On the other hand, priming the
      * table is cheap and can save a lot of heart ache
      */
-    network_prime_arp(&gw); //RTH
-    udp_syscall_init();
+    network_prime_arp(&gw);
+    network_prime_arp(&remote);
+
+    udp_syscall_init(); //RTH
 
     /* initialise and mount NFS */
     if(strlen(SOS_NFS_DIR)) {

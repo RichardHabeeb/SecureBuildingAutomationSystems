@@ -77,7 +77,7 @@ static int alarm_status;
 /* TODO: CAREFUL this can be called by both threads! */
 void control_update(void) {
     seL4_MessageInfo_t msg;
-    float temp_error = fabs(current_temp - setpoint);
+    float temp_error = (current_temp - setpoint);
     
     printf("TEMP CONTROL: Doing control update.\n\tCurrent Temp: %4.2f\n\tSetpoint: %4.2f (error: %4.2f).\n",
             current_temp,
@@ -85,13 +85,13 @@ void control_update(void) {
             temp_error);
 
     /* Check if temp is safe, if not trigger alarm. */
-    if(!alarm_status && temp_error > temp_safety_zone) {
+    if(!alarm_status && fabs(temp_error) > temp_safety_zone) {
         printf("TEMP CONTROL: !!!!!!! ACTIVATING ALARM !!!!!!!\n");
         msg = seL4_MessageInfo_new(0, 0, 0, 1);
         alarm_status = 1;
         seL4_SetMR(0, 1);
         msg = seL4_Call(config->alarm_cap, msg);
-    } else if(alarm_status && temp_error < temp_safety_zone) {
+    } else if(alarm_status && fabs(temp_error) < temp_safety_zone) {
         printf("TEMP CONTROL: !!!!!!! DEACTIVATING ALARM !!!!!!!\n");
         msg = seL4_MessageInfo_new(0, 0, 0, 1);
         alarm_status = 0;
@@ -102,6 +102,7 @@ void control_update(void) {
     if(!fan_status && temp_error > 0) {
         fan_status = 1;
         printf("TEMP CONTROL: Turning on fan. Turning off heater.\n");
+        msg = seL4_MessageInfo_new(0, 0, 0, 3);
         seL4_SetMR(0, 0); /*Outgoing to proxy */
         seL4_SetMR(1, 1); /* Turn on fan */
         seL4_SetMR(2, 0); /* Turn off heater */
@@ -109,6 +110,7 @@ void control_update(void) {
     } else if(fan_status && temp_error < 0) {
         fan_status = 0;
         printf("TEMP CONTROL: Turning off fan. Turning on heater.\n");
+        msg = seL4_MessageInfo_new(0, 0, 0, 3);
         seL4_SetMR(0, 0); /* Outgoing to proxy */
         seL4_SetMR(1, 0); /* Turn off fan */
         seL4_SetMR(2, 1); /* Turn on heater */
@@ -130,6 +132,7 @@ void worker_thread(void) {
 
         switch(seL4_GetMR(0)) {
             case UpdateSetPoint:
+                msg = seL4_MessageInfo_new(0, 0, 0, 1);
                 raw_setpoint = seL4_GetMR(1);
                 setpoint = *(float *)&raw_setpoint;
                 seL4_SetMR(1, current_temp);
@@ -139,6 +142,7 @@ void worker_thread(void) {
                 control_update();
                 break;
             case GetCurrentTemp:
+                msg = seL4_MessageInfo_new(0, 0, 0, 3);
                 seL4_SetMR(1, current_temp);
                 seL4_SetMR(2, fan_status);
                 seL4_SetMR(3, !fan_status); /* Web assumes fan and heater are controller independently. */

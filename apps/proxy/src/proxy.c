@@ -83,14 +83,28 @@ void worker_thread(void) {
         /* wait for request */
         tag = seL4_Wait(config->clients[id].ep_cap, &badge);
 
+        if(seL4_MessageInfo_get_length(tag) < 1) continue;
+
         switch(seL4_GetMR(0)) {
             case SendPacket:
-                len = MIN(sizeof(recieved_data), seL4_MessageInfo_get_length(tag));
+                len = MIN(sizeof(recieved_data), (seL4_MessageInfo_get_length(tag) - 1)*sizeof(seL4_Word));
+
+                printf("PROXY: sending packet, len=%i\n", len);
         
                 if(config->enable_encryption) {
-                    len = blockEncrypt(&cipher_e[id], &key_e[id], (uint8_t *)seL4_GetIPCBuffer()->msg, len*8, recieved_data)/8;
+                    len = blockEncrypt(
+                            &cipher_e[id],
+                            &key_e[id],
+                            (uint8_t *)(seL4_GetIPCBuffer()->msg + 1),
+                            MAX(128, len*8), /* at least 1 block (128 bits) must be used, sizes in bits */
+                            recieved_data)/8;
+                    if(len == 0) {
+                        printf("PROXY: encrpytion failed.\n");
+                        seL4_Reply(tag);
+                        break;
+                    }
                 } else {
-                    memcpy(recieved_data, seL4_GetIPCBuffer()->msg, len);
+                    memcpy(recieved_data, seL4_GetIPCBuffer()->msg + 1, len);
                 }
         
                 send_packet(ip_address, port, recieved_data, len);
@@ -101,9 +115,20 @@ void worker_thread(void) {
                 port = seL4_GetMR(1);
         
                 len = recv_packet(port, recieved_data, sizeof(recieved_data), &remote_ip_address);
+                printf("PROXY: recieved packet, len=%i\n", len);
         
                 if(config->enable_encryption) {
-                    len = blockDecrypt(&cipher_d[id], &key_d[id], recieved_data, len*8, (uint8_t *)seL4_GetIPCBuffer()->msg)/8;
+                    len = blockDecrypt(
+                            &cipher_d[id],
+                            &key_d[id],
+                            recieved_data,
+                            MAX(128, len*8), /* at least 1 block (128 bits) must be used, sizes in bits */
+                            (uint8_t *)seL4_GetIPCBuffer()->msg)/8;
+                    if(len == 0) {
+                        printf("PROXY: decrpytion failed.\n");
+                        seL4_Reply(tag);
+                        break;
+                    }
                 } else {
                     memcpy(seL4_GetIPCBuffer()->msg, recieved_data, len);
                 }

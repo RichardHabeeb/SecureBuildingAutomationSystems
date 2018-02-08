@@ -159,10 +159,11 @@ void handle_syscall(seL4_Word badge, int num_args) {
         ipaddr.addr = seL4_GetMR(1);
         port = seL4_GetMR(2);
         buf = seL4_GetIPCBuffer()->msg + 3;
-	len = num_args - 2; /* Subtract off port and ip MRs. */
+	    len = (num_args - 2)*sizeof(seL4_Word); /* Subtract off port and ip MRs. */
 
 
         udp_send_syscall(ipaddr, port, buf, len);
+
         reply = seL4_MessageInfo_new(0, 0, 0, 1);
         seL4_SetMR(0, 0);
         seL4_Send(reply_cap, reply);
@@ -663,7 +664,29 @@ int main(void) {
     network_init(badge_irq_ep(_sos_interrupt_ep_cap, IRQ_BADGE_NETWORK));
 
 
-    //TODO don't put all these on the stack
+
+
+
+
+
+    char sensor_psk[] = "C480FD91B1B29293C1BD65D1E35B0E210B5B189BD77643C6B5B731B33FC4D2C1";
+    char fan_psk[] = "7D74FF4C3705DF5FCA68418BFCFBA32E9F246A6C9B85F2480F95B9D3BC32612E";
+    char sensor_iv[] = "827C43085639350AB66A23B700C69B2A";
+    char fan_iv[] = "BE0721CAC6FFBC2ED3698BC84068FE7F";
+    
+    /* 
+     * EMBEDDED CONTROLLER
+     * - TC
+     * - ALARM
+     * - WEB
+     */
+
+#if defined(CONFIG_APP_WEB) && \
+    defined(CONFIG_APP_TEMP_CONTROL) && \
+    defined(CONFIG_APP_PROXY_SENSOR) && \
+    defined(CONFIG_APP_PROXY_FAN) && \
+    defined(CONFIG_APP_ALARM)
+
     process_t web;
     process_t temp_control;
     process_t sensor;
@@ -675,22 +698,6 @@ int main(void) {
 
     temp_control_config_t temp_control_config;
     alarm_config_t alarm_config;
-
-    char sensor_psk[] = "C480FD91B1B29293C1BD65D1E35B0E210B5B189BD77643C6B5B731B33FC4D2C1";
-    char fan_psk[] = "7D74FF4C3705DF5FCA68418BFCFBA32E9F246A6C9B85F2480F95B9D3BC32612E";
-    char sensor_iv[] = "827C43085639350AB66A23B700C69B2A";
-    char fan_iv[] = "BE0721CAC6FFBC2ED3698BC84068FE7F";
-
-
-
-    
-
-#if defined(CONFIG_APP_WEB) && \
-    defined(CONFIG_APP_TEMP_CONTROL) && \
-    defined(CONFIG_APP_PROXY_SENSOR) && \
-    defined(CONFIG_APP_PROXY_FAN) && \
-    defined(CONFIG_APP_ALARM)
-
     
     //TODO fix cap counting
     start_process("alarm", _sos_ipc_ep_cap, &alarm, 1); 
@@ -705,7 +712,7 @@ int main(void) {
     sensor_config.num_clients = 1;
     sensor_config.clients[0].tcb_cap = 3;
     sensor_config.clients[0].port = 4444; //TODO stahp
-    sensor_config.clients[0].ip = decode_ip("192.168.168.2"); //TODO no.
+    sensor_config.clients[0].ip = decode_ip("192.168.0.201"); //TODO no.
     memcpy(sensor_config.clients[0].psk, sensor_psk, sizeof(sensor_psk)); 
     memcpy(sensor_config.clients[0].iv, sensor_iv, sizeof(sensor_iv));
 
@@ -721,7 +728,7 @@ int main(void) {
     fan_config.num_clients = 1;
     fan_config.clients[0].tcb_cap = 3;
     fan_config.clients[0].port = 4445;
-    fan_config.clients[0].ip = decode_ip("192.168.168.2"); //TODO no.
+    fan_config.clients[0].ip = decode_ip("192.168.0.201"); //TODO no.
     memcpy(fan_config.clients[0].psk, fan_psk, sizeof(fan_psk)); 
     memcpy(fan_config.clients[0].iv, fan_iv, sizeof(fan_iv));
 
@@ -765,6 +772,71 @@ int main(void) {
     initialize_process_config(&sensor, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&sensor_config), sizeof(sensor_config));
 #endif
 
+
+    /* 
+     * AIR HANDLER UNIT
+     * - FAN
+     * - SENSOR
+     */
+#if defined(CONFIG_APP_FAN) && \
+    defined(CONFIG_APP_SENSOR) && \
+    defined(CONFIG_APP_PROXY_TEMP_CONTROL)
+
+    process_t temp_control;
+    process_t sensor;
+    process_t fan;
+
+    proxy_config_t temp_control_config;
+    fan_config_t fan_config;
+    sensor_config_t sensor_config;
+    
+    //TODO fix cap counting
+    start_process("fan", _sos_ipc_ep_cap, &fan, 0); 
+    start_process("sensor", _sos_ipc_ep_cap, &sensor, 1);
+    start_process("proxy", _sos_ipc_ep_cap, &temp_control, 2);
+
+
+    /* Initialize temp control proxy */
+    temp_control_config.enable_encryption = 1;
+    temp_control_config.num_clients = 2;
+
+    temp_control_config.clients[0].tcb_cap = 3;
+    temp_control_config.clients[0].port = 4444; //TODO stahp
+    temp_control_config.clients[0].ip = decode_ip("192.168.0.200"); //TODO no.
+    memcpy(temp_control_config.clients[0].psk, sensor_psk, sizeof(sensor_psk)); 
+    memcpy(temp_control_config.clients[0].iv, sensor_iv, sizeof(sensor_iv));
+
+    temp_control_config.clients[1].tcb_cap = 4;
+    temp_control_config.clients[1].port = 4445; //TODO stahp
+    temp_control_config.clients[1].ip = decode_ip("192.168.0.200"); //TODO no.
+    memcpy(temp_control_config.clients[1].psk, fan_psk, sizeof(fan_psk)); 
+    memcpy(temp_control_config.clients[1].iv, fan_iv, sizeof(fan_iv));
+
+    connect_processes(&sensor, 
+                      seL4_AllRights, //TODO trim
+                      &sensor_config.tc_cap,
+                      &temp_control,
+                      seL4_AllRights,
+                      &temp_control_config.clients[0].ep_cap);  
+    connect_processes(&fan, 
+                      seL4_AllRights, //TODO trim
+                      &fan_config.tc_cap,
+                      &temp_control,
+                      seL4_AllRights,
+                      &temp_control_config.clients[1].ep_cap);  
+
+    /* Initialize Fan */
+    fan_config.gpio_bank1 = 0x80000000;
+    fan_config.iomuxc = 0x80001000; //TODO figure out how to manage mux with multiple drivers 
+
+    map_device_to_proc(&fan, 0x020E0000, fan_config.iomuxc);
+    map_device_to_proc(&fan, 0x0209C000, fan_config.gpio_bank1);
+
+    /* Write all configs */
+    initialize_process_config(&temp_control, (seL4_Word)PROCESS_CONFIG, (uint8_t *)&temp_control_config, sizeof(temp_control_config));
+    initialize_process_config(&fan, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&fan_config), sizeof(fan_config));
+    initialize_process_config(&sensor, (seL4_Word)PROCESS_CONFIG, (uint8_t *)(&sensor_config), sizeof(sensor_config));
+#endif
 
     /* Wait on synchronous endpoint for IPC */
     dprintf(0, "\nSOS entering syscall loop\n");

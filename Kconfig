@@ -37,10 +37,12 @@ endmenu
 
 menu "seL4 Applications"
     source "apps/sos/Kconfig"
-    source "apps/proxy/Kconfig"
     source "apps/web/Kconfig"
     source "apps/temp_control/Kconfig"
     source "apps/alarm/Kconfig"
+    source "apps/fan/Kconfig"
+    source "apps/sensor/Kconfig"
+    source "apps/proxy/Kconfig"
 endmenu
 
 menu "Tools"

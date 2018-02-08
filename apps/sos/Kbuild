@@ -15,6 +15,8 @@ sos-components-$(CONFIG_APP_PROXY) += proxy
 sos-components-$(CONFIG_APP_WEB) += web
 sos-components-$(CONFIG_APP_TEMP_CONTROL) += temp_control
 sos-components-$(CONFIG_APP_ALARM) += alarm
+sos-components-$(CONFIG_APP_FAN) += fan
+sos-components-$(CONFIG_APP_SENSOR) += sensor
 
 
 sos-components=$(addprefix $(STAGE_BASE)/bin/, $(sos-components-y))

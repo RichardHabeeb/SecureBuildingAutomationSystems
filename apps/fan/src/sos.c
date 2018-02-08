@@ -1,3 +1,4 @@
+
 /*------------------------------------------------------------------------------
  MIT License
  
@@ -25,57 +26,38 @@
 /*------------------------------------------------------------------------------
     INCLUDES
 ------------------------------------------------------------------------------*/
+#include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdint.h>
 #include <sel4/sel4.h>
 
-#define CONFIG_ADDRESS 0x70000000
-
 /*------------------------------------------------------------------------------
-    DEFINITIONS
+    VARIABLES
 ------------------------------------------------------------------------------*/
 
-typedef struct _proxy_client_config_t {
-    seL4_CPtr ep_cap;
-    seL4_CPtr tcb_cap;
-    seL4_Word port;
-    seL4_Word ip;
-    char psk[64+1]; /* Put key as a hex string here. (256-bit)+\n */
-    char iv[32+1]; /* Put IV as a hex string here. */
-} proxy_client_config_t;
+/*------------------------------------------------------------------------------
+    PROTOTYPES
+------------------------------------------------------------------------------*/
 
-typedef struct _proxy_config_t {
-    seL4_Word enable_encryption;
-    proxy_client_config_t clients[CONFIG_APP_PROXY_MAX_NUM_CLIENTS];
-    seL4_Word num_clients;
-} proxy_config_t;
+/*------------------------------------------------------------------------------
+    PROCEEDURES
+------------------------------------------------------------------------------*/
+static size_t sos_debug_print(const void *vData, size_t count) {
+    size_t i;
+    const char *realdata = vData;
+    for (i = 0; i < count; i++)
+        seL4_DebugPutChar(realdata[i]);
+    return count;
+}
 
+size_t sos_write(void *vData, size_t count) {
+    //implement this to use your syscall
+    return sos_debug_print(vData, count);
+}
 
-typedef struct _temp_control_config_t {
-    uint32_t default_set_point;
-
-    seL4_CPtr web_cap;
-    seL4_CPtr sensor_cap;
-    seL4_CPtr fan_cap;
-    seL4_CPtr alarm_cap;
-} temp_control_config_t;
-
-
-typedef struct _alarm_config_t {
-    seL4_CPtr tc_cap;
-    uint32_t gpio_id;
-    void *gpio_bank1;
-    void *iomuxc;
-} alarm_config_t;
-
-typedef struct _fan_config_t {
-    seL4_CPtr tc_cap;
-    uint32_t gpio_id;
-    void *gpio_bank1;
-    void *iomuxc;
-} fan_config_t;
-
-typedef struct _sensor_config_t {
-    seL4_CPtr tc_cap;
-    void *iomuxc;
-} sensor_config_t;
+size_t sos_read(void *vData, size_t count) {
+    //implement this to use your syscall
+    return 0;
+}

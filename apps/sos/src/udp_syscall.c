@@ -40,7 +40,7 @@ void udp_send_syscall(struct ip_addr ipaddr, int port, char * data, unsigned int
         return;
     }
 
-    //printf("udp_send_syscall: data: %s, %i \n", data, len);
+    //printf("udp_send_syscall: ip:%i, port:%i, data: %s, %i \n", ipaddr.addr, port, data, len);
     err = udp_connect(pcb, &ipaddr, port);
 
     switch(err) {
@@ -180,7 +180,7 @@ static void my_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, struct ip_a
 
     reply_cap = pop(upcb->local_port);
 
-    //printf("Incoming packet source: %i %i destination: %i %i reply: %i\n", addr->addr, port, upcb->local_ip.addr, upcb->local_port, reply_cap);
+    printf("Incoming packet source: %i %i destination: %i %i reply: %i\n", addr->addr, port, upcb->local_ip.addr, upcb->local_port, reply_cap);
 
     if(reply_cap != seL4_CapNull)
     {
@@ -195,7 +195,7 @@ static void my_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, struct ip_a
     else
     {
         //TODO Queue the missed packets
-        //printf("Dropped a packet.\n");
+        printf("Dropped a packet.\n");
     }
 
     pbuf_free(p);
