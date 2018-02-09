@@ -151,29 +151,10 @@ network_prime_arp(struct ip_addr *gw){
 }
 
 void
-network_init(seL4_CPtr interrupt_ep) {
+network_init(ps_io_ops_t *io_ops, seL4_CPtr interrupt_ep) {
     struct ip_addr netmask, ipaddr, gw, remote;
     int err;
     int i;
-
-    ps_io_mapper_t io_mapper = {
-        .cookie = NULL,
-        .io_map_fn = sos_map_device,
-        .io_unmap_fn = sos_unmap_device
-    };
-    ps_dma_man_t dma_man = {
-        .cookie = NULL,
-        .dma_alloc_fn = sos_dma_malloc,
-        .dma_free_fn = sos_dma_free,
-        .dma_pin_fn = sos_dma_pin,
-        .dma_unpin_fn = sos_dma_unpin,
-        .dma_cache_op_fn = sos_dma_cache_op
-    };
-
-    ps_io_ops_t io_ops = {
-        .io_mapper = io_mapper,
-        .dma_manager = dma_man
-    };
 
     _irq_ep = interrupt_ep;
 
@@ -192,7 +173,7 @@ network_init(seL4_CPtr interrupt_ep) {
     printf("\n");
 
     /* low level initialisation */
-    lwip_iface = ethif_new_lwip_driver(io_ops, NULL, ethif_imx6_init, NULL);
+    lwip_iface = ethif_new_lwip_driver(*io_ops, NULL, ethif_imx6_init, NULL);
     assert(lwip_iface);
 
     /* Initialise IRQS */

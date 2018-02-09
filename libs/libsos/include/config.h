@@ -28,7 +28,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <sel4/sel4.h>
-
 #define CONFIG_ADDRESS 0x70000000
 
 /*------------------------------------------------------------------------------
@@ -77,5 +76,4 @@ typedef struct _fan_config_t {
 
 typedef struct _sensor_config_t {
     seL4_CPtr tc_cap;
-    void *iomuxc;
 } sensor_config_t;

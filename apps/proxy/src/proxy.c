@@ -20,15 +20,6 @@
 /*------------------------------------------------------------------------------
     DEFINITIONS & CONSTANTS
 ------------------------------------------------------------------------------*/
-#define IP4_ADDR(a,b,c,d) \
-        ((unsigned int)((d) & 0xff) << 24) | \
-        ((unsigned int)((c) & 0xff) << 16) | \
-        ((unsigned int)((b) & 0xff) << 8)  | \
-        (unsigned int)((a) & 0xff)
-
-
-#define MIN(a,b) (((a)<(b))?(a):(b))
-#define MAX(a,b) (((a)>(b))?(a):(b))
 
 
 /* Cspace Layout */
@@ -36,6 +27,9 @@
 #define SYSCALL_EP_SLOT         (2)
 
 #define THREAD_STACK_SIZE 512
+
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
 
 enum {
     SendPacket = 0,

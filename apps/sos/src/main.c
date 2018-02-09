@@ -20,7 +20,7 @@
 #include <elf/elf.h>
 #include <serial/serial.h>
 
-
+#include "dma.h"
 #include "network.h"
 #include "elf.h"
 
@@ -37,7 +37,7 @@
 #define verbose 5
 #include <sys/debug.h>
 #include <sys/panic.h>
-
+#include <platsupport/i2c.h>
 
 /* This is the index where a clients syscall enpoint will
  * be stored in the clients cspace. */
@@ -61,6 +61,7 @@
  * of an archive of attached applications.                */
 extern char _cpio_archive[];
 
+i2c_bus_t i2c;
 const seL4_BootInfo* _boot_info;
 
 
@@ -106,6 +107,8 @@ typedef struct _process_t {
 #define SOS_SYSCALL0 0
 #define SOS_SYSCALL1 1
 #define SOS_SYSCALL2 2
+#define SOS_SYSCALL3 3
+#define SOS_SYSCALL4 4
 
 seL4_CPtr _sos_ipc_ep_cap;
 seL4_CPtr _sos_interrupt_ep_cap;
@@ -124,6 +127,70 @@ unsigned int decode_ip(char *ip) {
             ((unsigned int)((b) & 0xff) << 8)  | 
             (unsigned int)((a) & 0xff);
 }
+static void * sos_map_device(void* cookie, uintptr_t addr, size_t size, int cached, ps_mem_flags_t flags){
+    (void)cookie;
+    return map_device((void*)addr, size);
+}
+
+static void sos_unmap_device(void *cookie, void *addr, size_t size) {
+}
+
+
+
+
+
+char i2c3_read_buffer[512]; /* THIS IS A HACK, but it works in this case since only 1 app will read */
+char i2c3_write_buffer[512]; /* THIS IS A HACK, but it works in this case since only 1 app will read */
+
+void i2c3_read_callback(i2c_bus_t* bus, enum i2c_stat status, size_t size, void* token) {
+    seL4_MessageInfo_t msg;
+    
+    printf("SOS: i2c read callback (token=%p, size=%i)\n", token, size);
+
+    if(status == I2CSTAT_LASTBYTE) return;
+
+    if(status != I2CSTAT_COMPLETE) {
+        printf("SOS: i2c error! %i\n", status);
+        msg = seL4_MessageInfo_new(0,0,0,0);
+        seL4_Send((seL4_CPtr)token, msg);
+        cspace_free_slot(cur_cspace, (seL4_CPtr)token); 
+        return;
+    }
+
+    msg = seL4_MessageInfo_new(0,0,0, 1 + (size / sizeof(seL4_Word) + ((size % sizeof(seL4_Word) == 0) ? 0 : 1 )));
+    seL4_SetMR(0, size);
+    memcpy(seL4_GetIPCBuffer()->msg + 1, i2c3_read_buffer, size);
+
+    seL4_Send((seL4_CPtr)token, msg);
+    cspace_free_slot(cur_cspace, (seL4_CPtr)token); 
+}
+
+
+
+
+void i2c3_write_callback(i2c_bus_t* bus, enum i2c_stat status, size_t size, void* token) {
+    seL4_MessageInfo_t msg;
+
+    printf("SOS: i2c write callback (token=%p, size=%i)\n", token, size);
+
+    if(status == I2CSTAT_LASTBYTE) return;
+
+    if(status != I2CSTAT_COMPLETE) {
+        printf("SOS: i2c error! %i\n", status);
+        msg = seL4_MessageInfo_new(0,0,0,0);
+        seL4_Send((seL4_CPtr)token, msg);
+        cspace_free_slot(cur_cspace, (seL4_CPtr)token); 
+        return;
+    }
+
+    msg = seL4_MessageInfo_new(0,0,0, 1);
+    seL4_SetMR(0, size);
+
+    seL4_Send((seL4_CPtr)token, msg);
+    cspace_free_slot(cur_cspace, (seL4_CPtr)token); 
+}
+
+
 
 
 void handle_syscall(seL4_Word badge, int num_args) {
@@ -134,6 +201,7 @@ void handle_syscall(seL4_Word badge, int num_args) {
     int port;
     int len;
     char *buf;
+    char slave;
 
     syscall_number = seL4_GetMR(0);
 
@@ -180,6 +248,28 @@ void handle_syscall(seL4_Word badge, int num_args) {
         udp_recv_syscall(port, reply_cap);
         //Don't send reply. Wait for incoming network data.
 
+        break;
+    case SOS_SYSCALL3: /* i2c read */
+        //TODO ensure 2 args
+        slave = seL4_GetMR(1);
+        len = MIN(seL4_GetMR(2), sizeof(i2c3_read_buffer));
+
+        printf("SOS: i2c read(addr=%x, len=%i)\n", slave, len);
+
+        i2c_mread(&i2c, slave, i2c3_read_buffer, len, i2c3_read_callback, (void *)reply_cap);
+        break;
+
+    case SOS_SYSCALL4:
+        //TODO ensure 2 args
+        slave = seL4_GetMR(1);
+        len = MIN(seL4_GetMR(2), sizeof(i2c3_write_buffer));
+
+        memcpy(i2c3_write_buffer, seL4_GetIPCBuffer()->msg, len);
+
+        printf("SOS: i2c write(addr=%x, len=%i)\n", slave, len);
+
+        i2c_mwrite(&i2c, slave, i2c3_write_buffer, len, i2c3_write_callback, (void *)reply_cap);
+        printf("SOS: i2c write2\n");
         break;
 
     default:
@@ -388,6 +478,7 @@ void start_process(char* app_name, seL4_CPtr syscall_ep, process_t *proc, uint32
     /* Create an IPC buffer */
     proc->ipc_buffer_addr = ut_alloc(seL4_PageBits);
     conditional_panic(!proc->ipc_buffer_addr, "No memory for ipc buffer");
+
     err =  cspace_ut_retype_addr(proc->ipc_buffer_addr,
                                  seL4_ARM_SmallPageObject,
                                  seL4_PageBits,
@@ -660,13 +751,48 @@ int main(void) {
 
     _sos_init(&_sos_ipc_ep_cap, &_sos_interrupt_ep_cap);
 
+    ps_io_mapper_t io_mapper = {
+        .cookie = NULL,
+        .io_map_fn = sos_map_device,
+        .io_unmap_fn = sos_unmap_device
+    };
+    ps_dma_man_t dma_man = {
+        .cookie = NULL,
+        .dma_alloc_fn = sos_dma_malloc,
+        .dma_free_fn = sos_dma_free,
+        .dma_pin_fn = sos_dma_pin,
+        .dma_unpin_fn = sos_dma_unpin,
+        .dma_cache_op_fn = sos_dma_cache_op
+    };
+
+    ps_io_ops_t io_ops = {
+        .io_mapper = io_mapper,
+        .dma_manager = dma_man
+    };
+   
+    printf("SOS: Setting up mux...\n"); 
+    err = mux_sys_init(&io_ops, &io_ops.mux_sys);
+    conditional_panic(err, "Failed to initialize mux");
+
+    printf("SOS: Setting up clock...\n"); 
+    err = clock_sys_init(&io_ops, &io_ops.clock_sys);
+    conditional_panic(err, "Failed to initialize clock");
+
+    printf("SOS: Setting up i2c...\n"); 
+    err = i2c_init(I2C3, &io_ops, &i2c);
+    conditional_panic(err, "Failed to initialize i2c3");
+
+    int i2c_addr[255];
+    printf("SOS: Scanning for i2c devices...\n");
+    int num_addrs = i2c_scan(&i2c, 0, i2c_addr, sizeof(i2c_addr)/sizeof(i2c_addr[0]));
+    printf("SOS: Found %i devices: ");
+    for(int i = 0; i < num_addrs; i++) {
+        printf("%i ", i2c_addr[i]);
+    }
+    printf("\n");
+
     /* Initialise the network hardware */
-    network_init(badge_irq_ep(_sos_interrupt_ep_cap, IRQ_BADGE_NETWORK));
-
-
-
-
-
+    network_init(&io_ops, badge_irq_ep(_sos_interrupt_ep_cap, IRQ_BADGE_NETWORK));
 
 
     char sensor_psk[] = "C480FD91B1B29293C1BD65D1E35B0E210B5B189BD77643C6B5B731B33FC4D2C1";
@@ -792,7 +918,7 @@ int main(void) {
     
     //TODO fix cap counting
     start_process("fan", _sos_ipc_ep_cap, &fan, 0); 
-    start_process("sensor", _sos_ipc_ep_cap, &sensor, 1);
+    start_process("sensor", _sos_ipc_ep_cap, &sensor, 0);
     start_process("proxy", _sos_ipc_ep_cap, &temp_control, 2);
 
 
@@ -825,12 +951,14 @@ int main(void) {
                       seL4_AllRights,
                       &temp_control_config.clients[1].ep_cap);  
 
-    /* Initialize Fan */
+    /* Initialize Fan */ 
     fan_config.gpio_bank1 = 0x80000000;
-    fan_config.iomuxc = 0x80001000; //TODO figure out how to manage mux with multiple drivers 
+    fan_config.iomuxc = 0x80001000; //TODO figure out how to manage mux with multiple drivers
 
+    //TODO convert to io_ops allocation
     map_device_to_proc(&fan, 0x020E0000, fan_config.iomuxc);
     map_device_to_proc(&fan, 0x0209C000, fan_config.gpio_bank1);
+
 
     /* Write all configs */
     initialize_process_config(&temp_control, (seL4_Word)PROCESS_CONFIG, (uint8_t *)&temp_control_config, sizeof(temp_control_config));

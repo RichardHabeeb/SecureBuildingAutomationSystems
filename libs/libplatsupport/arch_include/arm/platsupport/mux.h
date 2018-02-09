@@ -47,6 +47,7 @@ static inline int mux_feature_enable(mux_sys_t* mux, enum mux_feature mux_featur
     if (mux->feature_enable) {
         return mux->feature_enable(mux, mux_feature);
     } else {
+        printf("ERROR: mux\n");
         return -1;
     }
 }

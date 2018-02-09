@@ -13,6 +13,7 @@
 
 #include <sel4/types.h>
 #include <nfs/nfs.h>
+#include "dma.h"
 
 extern fhandle_t mnt_point;
 
@@ -21,7 +22,7 @@ extern fhandle_t mnt_point;
  * @param[in] interrupt_ep The asynchronous endpoint that the 
  *                         driver should use for registering IRQs
  */
-extern void network_init(seL4_CPtr interrupt_ep);
+extern void network_init(ps_io_ops_t *io_ops, seL4_CPtr interrupt_ep);
 
 /**
  * Initialises DMA memory for the network driver
