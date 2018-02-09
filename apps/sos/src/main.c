@@ -254,9 +254,13 @@ void handle_syscall(seL4_Word badge, int num_args) {
         slave = seL4_GetMR(1);
         len = MIN(seL4_GetMR(2), sizeof(i2c3_read_buffer));
 
-        printf("SOS: i2c read(addr=%x, len=%i)\n", slave, len);
+        len = i2c_mread(&i2c, slave, i2c3_read_buffer, len, NULL, NULL);
+        reply = seL4_MessageInfo_new(0,0,0, 1 + (len / sizeof(seL4_Word) + ((len % sizeof(seL4_Word) == 0) ? 0 : 1 )));
+        seL4_SetMR(0, len);
+        memcpy(seL4_GetIPCBuffer()->msg + 1, i2c3_read_buffer, len);
 
-        i2c_mread(&i2c, slave, i2c3_read_buffer, len, i2c3_read_callback, (void *)reply_cap);
+        seL4_Send(reply_cap, reply);
+        cspace_free_slot(cur_cspace, reply_cap);
         break;
 
     case SOS_SYSCALL4:
@@ -264,12 +268,17 @@ void handle_syscall(seL4_Word badge, int num_args) {
         slave = seL4_GetMR(1);
         len = MIN(seL4_GetMR(2), sizeof(i2c3_write_buffer));
 
-        memcpy(i2c3_write_buffer, seL4_GetIPCBuffer()->msg, len);
+        memcpy(i2c3_write_buffer, seL4_GetIPCBuffer()->msg + 3, len);
 
-        printf("SOS: i2c write(addr=%x, len=%i)\n", slave, len);
 
-        i2c_mwrite(&i2c, slave, i2c3_write_buffer, len, i2c3_write_callback, (void *)reply_cap);
-        printf("SOS: i2c write2\n");
+        len = i2c_mwrite(&i2c, slave, i2c3_write_buffer, len, NULL, NULL);
+
+        reply = seL4_MessageInfo_new(0,0,0,1);
+        seL4_SetMR(0, len);
+
+        seL4_Send(reply_cap, reply);
+        cspace_free_slot(cur_cspace, reply_cap); 
+
         break;
 
     default:
@@ -785,9 +794,9 @@ int main(void) {
     int i2c_addr[255];
     printf("SOS: Scanning for i2c devices...\n");
     int num_addrs = i2c_scan(&i2c, 0, i2c_addr, sizeof(i2c_addr)/sizeof(i2c_addr[0]));
-    printf("SOS: Found %i devices: ");
+    printf("SOS: Found %i devices: ", num_addrs);
     for(int i = 0; i < num_addrs; i++) {
-        printf("%i ", i2c_addr[i]);
+        printf("%x ", i2c_addr[i]);
     }
     printf("\n");
 

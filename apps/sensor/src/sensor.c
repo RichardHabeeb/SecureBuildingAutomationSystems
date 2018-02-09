@@ -147,7 +147,7 @@ uint16_t i2c_read_16() {
 
 static uint16_t read_eeprom_reg(unsigned char reg)
 {
-    i2c_write_n(&reg, 1);    
+    i2c_write_n(&reg, 1);
     return i2c_read_16();
 }
 
@@ -159,7 +159,7 @@ static uint16_t read_temp(int delay_ms)
 
     i2c_write_n(buf, 2);
 
-    usleep(5 * delay_ms);
+    usleep(1000 * delay_ms);
     //timer_sleep_ms(delay_ms);
 
     return read_eeprom_reg(BMP180_REG_TMP);
@@ -178,6 +178,19 @@ static void read_calibration()
     cal.mb = read_eeprom_reg(MB_MSB_REG);
     cal.mc = read_eeprom_reg(MC_MSB_REG);
     cal.md = read_eeprom_reg(MD_MSB_REG);
+
+    printf("SENSOR: cal.ac1=%i\n", cal.ac1); 
+    printf("SENSOR: cal.ac2=%i\n", cal.ac2);
+    printf("SENSOR: cal.ac3=%i\n", cal.ac3);
+    printf("SENSOR: cal.ac4=%i\n", cal.ac4);
+    printf("SENSOR: cal.ac5=%i\n", cal.ac5);
+    printf("SENSOR: cal.ac6=%i\n", cal.ac6);
+    printf("SENSOR: cal.b1 =%i\n", cal.b1 );
+    printf("SENSOR: cal.b2 =%i\n", cal.b2 );
+    printf("SENSOR: cal.mb =%i\n", cal.mb );
+    printf("SENSOR: cal.mc =%i\n", cal.mc );
+    printf("SENSOR: cal.md =%i\n", cal.md );
+
 
     /* Validate. Data sheet says values should not be 0x0000 nor 0xffff */
 	if (!CAL_COEF_IS_VALID(cal.ac1) ||
@@ -203,15 +216,18 @@ int main(void) {
 
     printf("SENSOR: Started\n");
 
-
+    
     //i2c_set_address(0xEE); /* BMP180 Specific */
-    //slave_address = 0xEE;
-    slave_address = 0x77;
+    slave_address = 0xEE;
+    //slave_address = 0x77;
     read_calibration();
+
+
+
 
     while(1)
     {
-        usleep(1000*500);
+        usleep(1000*10);
 
         uint16_t ut = read_temp(5);
 

@@ -135,17 +135,18 @@ void worker_thread(void) {
                 msg = seL4_MessageInfo_new(0, 0, 0, 1);
                 raw_setpoint = seL4_GetMR(1);
                 setpoint = *(float *)&raw_setpoint;
-                seL4_SetMR(1, current_temp);
+                seL4_SetMR(0, current_temp);
                 seL4_Reply(msg);
 
                 /* Update the system with the new setpoint */
                 control_update();
                 break;
             case GetCurrentTemp:
-                msg = seL4_MessageInfo_new(0, 0, 0, 3);
-                seL4_SetMR(1, current_temp);
-                seL4_SetMR(2, fan_status);
-                seL4_SetMR(3, !fan_status); /* Web assumes fan and heater are controller independently. */
+                msg = seL4_MessageInfo_new(0, 0, 0, 4);
+                seL4_SetMR(0, current_temp);
+                seL4_SetMR(1, fan_status);
+                seL4_SetMR(2, !fan_status); /* Web assumes fan and heater are controller independently. */
+                seL4_SetMR(3, alarm_status);
                 seL4_Reply(msg);
                 break;
             default:
@@ -190,7 +191,7 @@ int main(void) {
         msg = seL4_Call(config->sensor_cap, msg);
 
         /* Update the current_temp */
-        current_temp = seL4_GetMR(0);
+        current_temp = (seL4_GetMR(0))/10.0;
 
         control_update();
     }
