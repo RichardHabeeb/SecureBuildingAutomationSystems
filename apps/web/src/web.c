@@ -124,7 +124,7 @@ int main(void) {
         seL4_Word temp = seL4_GetMR(0);
 
         BuildingData_t data = {
-            .currentTemp = *(float *)&temp,
+            .currentTemp = temp,
             .cooling = seL4_GetMR(1),
             .heating = seL4_GetMR(2),
             .alarm = seL4_GetMR(3)
