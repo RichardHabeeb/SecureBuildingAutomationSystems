@@ -1,7 +1,7 @@
-build
-stage
-images
-include
+/build
+/stage
+/images
+/include
 
 *.swp
 *.swo
